@@ -106,7 +106,7 @@ class PickupService
 
         // 2️⃣ Check available bags
         $availableBags = $this->subscriptions
-            ->calculateAvailableBags($subscription);
+            ->getAvailableBags($subscription);
 
         if ($data['bags'] > $availableBags) {
             throw new \DomainException('Not enough subscription bags available.');
@@ -157,11 +157,71 @@ class PickupService
         $this->enforceSchedulingRules($data['pickup_date'] ?? null, $user);
 
         return DB::transaction(function () use ($user, $data) {
+            // Determine Order Type & Recalculate Billing (Security Fix)
+            $orderType = strtolower($data['order_type']);
+            $billingPreview = [];
+            $invoiceType = '';
+
+            if ($orderType === 'ppo') {
+                 if (empty($data['estimated_weight']) || $data['estimated_weight'] <= 0) {
+                    throw new \InvalidArgumentException('Estimated weight must be greater than zero.');
+                }
+
+                $billingPreview = $this->billing->billPPO(
+                    $user,
+                    $data['estimated_weight'],
+                    1.99,   // price per lb
+                    30.00,  // minimum charge
+                    5.00,   // pickup fee
+                    3.00    // service fee
+                );
+                $invoiceType = 'ppo';
+
+            } elseif ($orderType === 'subscription') {
+                $subscriptionId = $data['subscription_id'] ?? null;
+                if (!$subscriptionId) {
+                     throw new \InvalidArgumentException('Subscription ID is required.');
+                }
+
+                $subscription = UserSubscription::findOrFail($subscriptionId);
+
+                // Ownership check
+                if ($subscription->user_id !== $user->id) {
+                     throw new \DomainException('Unauthorized subscription access.');
+                }
+
+                // Validate active
+                 if ($subscription->status !== 'active') {
+                    throw new \DomainException('Subscription must be active to create a pickup.');
+                }
+
+                 if (empty($data['bags']) || $data['bags'] <= 0) {
+                    throw new \InvalidArgumentException('At least one bag is required.');
+                }
+
+                // Check availability
+                $availableBags = $this->subscriptions->getAvailableBags($subscription);
+                if ($data['bags'] > $availableBags) {
+                    throw new \DomainException('Not enough subscription bags available.');
+                }
+
+                $billingPreview = $this->billing->billSubscriptionOverage(
+                    $user,
+                    $subscription,
+                    $data['estimated_weight'] ?? 0,
+                    $data['bags'],
+                    20,     // max weight per bag (lbs)
+                    2.50    // overage price per lb
+                );
+                $invoiceType = 'subscription_overage';
+            } else {
+                 throw new \InvalidArgumentException('Invalid order type.');
+            }
 
             // 2️⃣ Create pickup
             $pickup = Pickup::create([
                 'user_id' => $user->id,
-                'order_type' => strtolower($data['order_type']),
+                'order_type' => $orderType,
                 'status' => 'scheduled',
                 'pickup_date' => $data['pickup_date'],
                 'estimated_weight' => $data['estimated_weight'] ?? null,
@@ -169,11 +229,11 @@ class PickupService
                 'subscription_id' => $data['subscription_id'] ?? null,
             ]);
 
-            // 3️⃣ Create invoice (persisted)
+            // 3️⃣ Create invoice (persisted) using RECALCULATED billing preview
             $invoice = $this->invoices->createAndPersistDraft(
                 userId: $user->id,
-                invoiceType: $data['invoice_type'],
-                billingPreview: $data['billing_preview'],
+                invoiceType: $invoiceType,
+                billingPreview: $billingPreview,
                 pickupId: $pickup->id,
                 subscriptionId: $data['subscription_id'] ?? null
             );

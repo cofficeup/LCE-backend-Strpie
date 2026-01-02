@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Models\Role;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -33,6 +34,12 @@ class AuthController extends Controller
             'last_name'  => $validated['last_name'],
             'phone'      => $validated['phone'] ?? null,
         ]);
+
+        // Assign default 'customer' role
+        $customerRole = Role::where('name', 'customer')->first();
+        if ($customerRole) {
+            $user->roles()->attach($customerRole->id);
+        }
 
         $token = $user->createToken('auth_token')->plainTextToken;
 
