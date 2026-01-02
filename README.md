@@ -80,9 +80,9 @@ php artisan serve
 
 ---
 
-## 🧪 API Testing (Postman)
+## 🧪  Testing 
 
-A complete **Postman Collection** is included in the root directory:
+A complete ** Collection** is included in the root directory:
 It is organized by **Persona**:
 1.  **Customer Journey**: Auth -> Zone Check -> Subscribe -> Schedule Pickup.
 2.  **Admin Operations**: Manage Users, Zones, Pricing, Sites.
