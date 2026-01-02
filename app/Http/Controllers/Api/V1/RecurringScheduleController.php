@@ -29,6 +29,7 @@ class RecurringScheduleController extends Controller
     {
         $validated = $request->validate([
             'order_type' => 'required|in:ppo,subscription',
+            'frequency' => 'in:weekly,bi_weekly',
             'schedule_monday' => 'boolean',
             'schedule_tuesday' => 'boolean',
             'schedule_wednesday' => 'boolean',
@@ -61,6 +62,7 @@ class RecurringScheduleController extends Controller
 
         $validated = $request->validate([
             'order_type' => 'sometimes|in:ppo,subscription',
+            'frequency' => 'in:weekly,bi_weekly',
             'schedule_monday' => 'boolean',
             'schedule_tuesday' => 'boolean',
             'schedule_wednesday' => 'boolean',

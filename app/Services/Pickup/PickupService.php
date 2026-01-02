@@ -8,6 +8,7 @@ use App\Models\UserSubscription;
 use App\Services\Billing\BillingService;
 use App\Services\Subscription\SubscriptionService;
 use App\Services\Invoice\InvoiceService;
+use App\Services\Configuration\ConfigurationService;
 use App\Exceptions\PickupSchedulingException;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
@@ -19,19 +20,22 @@ class PickupService
     protected InvoiceService $invoices;
     protected ZoneService $zones;
     protected HolidayService $holidays;
+    protected ConfigurationService $config;
 
     public function __construct(
         BillingService $billing,
         SubscriptionService $subscriptions,
         InvoiceService $invoices,
         ZoneService $zones,
-        HolidayService $holidays
+        HolidayService $holidays,
+        ConfigurationService $config
     ) {
         $this->billing = $billing;
         $this->subscriptions = $subscriptions;
         $this->invoices = $invoices;
         $this->zones = $zones;
         $this->holidays = $holidays;
+        $this->config = $config;
     }
 
     /**
@@ -47,14 +51,14 @@ class PickupService
             throw new \InvalidArgumentException('Estimated weight must be greater than zero.');
         }
 
-        // 2️⃣ Billing preview (static pricing for now)
+        // 2️⃣ Billing preview
         $billingPreview = $this->billing->billPPO(
             $user,
             $data['estimated_weight'],
-            1.99,   // price per lb
-            30.00,  // minimum charge
-            5.00,   // pickup fee
-            3.00    // service fee
+            $this->config->getFloat('ppo_price_per_lb', 2.99),
+            $this->config->getFloat('ppo_minimum_charge', 30.00),
+            $this->config->getFloat('fee_pickup_delivery', 9.99),
+            $this->config->getFloat('fee_service', 5.00)
         );
 
         // 3️⃣ Invoice preview (draft only, NOT persisted)
@@ -118,8 +122,8 @@ class PickupService
             $subscription,
             $data['estimated_weight'] ?? 0,
             $data['bags'],
-            20,     // max weight per bag (lbs)
-            2.50    // overage price per lb
+            $this->config->getFloat('sub_bag_max_weight', 20.0),
+            $this->config->getFloat('sub_overage_price_per_lb', 2.99)
         );
 
         // 4️⃣ Invoice preview (draft only)
@@ -170,10 +174,10 @@ class PickupService
                 $billingPreview = $this->billing->billPPO(
                     $user,
                     $data['estimated_weight'],
-                    1.99,   // price per lb
-                    30.00,  // minimum charge
-                    5.00,   // pickup fee
-                    3.00    // service fee
+                    $this->config->getFloat('ppo_price_per_lb', 2.99),
+                    $this->config->getFloat('ppo_minimum_charge', 30.00),
+                    $this->config->getFloat('fee_pickup_delivery', 9.99),
+                    $this->config->getFloat('fee_service', 5.00)
                 );
                 $invoiceType = 'ppo';
 
@@ -210,8 +214,8 @@ class PickupService
                     $subscription,
                     $data['estimated_weight'] ?? 0,
                     $data['bags'],
-                    20,     // max weight per bag (lbs)
-                    2.50    // overage price per lb
+                    $this->config->getFloat('sub_bag_max_weight', 20.0),
+                    $this->config->getFloat('sub_overage_price_per_lb', 2.99)
                 );
                 $invoiceType = 'subscription_overage';
             } else {

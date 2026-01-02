@@ -118,7 +118,7 @@ class SubscriptionService
     }
 
     /**
-     * Cancel subscription at period end.
+     * Cancel subscription at period end with refund calculation for annual plans.
      */
     public function cancel(UserSubscription $subscription, ?string $reason = null): UserSubscription
     {
@@ -131,6 +131,38 @@ class SubscriptionService
         }
 
         return DB::transaction(function () use ($subscription, $reason) {
+            // Calculate Refund if Annual
+            if ($subscription->billing_cycle === 'annual') {
+                $paymentBalance = $subscription->payment_balance ?? 0;
+                $daysSinceStart = now()->diffInDays($subscription->start_date);
+
+                // Refund logic per spec 5.4
+                $refundAmount = 0;
+
+                if ($daysSinceStart < 5 && $paymentBalance > 0) {
+                     // Full refund minus nothing? Spec says: "refund = payment_balance" if < 5 days
+                     $refundAmount = $paymentBalance;
+                } elseif ($paymentBalance > 0) {
+                     // "refund = max(0, payment_balance - 100.00)"
+                     $refundAmount = max(0, $paymentBalance - 100.00);
+                }
+
+                if ($refundAmount > 0) {
+                    // Trigger refund (assuming payment service handles stripe refund logic)
+                    // For now we just log it as a pending refund action or create a credit
+                    // Note: Ideally call RefundService here.
+                    Log::info("Pending annual cancellation refund: {$refundAmount}", ['subscription_id' => $subscription->id]);
+                    // Create manual credit for refund (Spec 5.7 says create negative invoice/credit)
+                     \App\Models\Credit::create([
+                        'user_id' => $subscription->user_id,
+                        'type' => 'refund',
+                        'description' => 'Annual Subscription Cancellation Refund',
+                        'amount' => $refundAmount,
+                        'balance' => $refundAmount,
+                    ]);
+                }
+            }
+
             // Cancel in Stripe (at period end)
             if ($subscription->stripe_subscription_id) {
                 $stripeData = $this->stripeSubscription->cancelAtPeriodEnd($subscription, $reason);

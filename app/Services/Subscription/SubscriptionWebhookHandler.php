@@ -284,18 +284,35 @@ class SubscriptionWebhookHandler
     }
 
     /**
-     * Reset bag allocations for new billing period.
+     * Reset bag allocations for new billing period with banking logic.
      */
     protected function resetBagAllocations(UserSubscription $subscription): void
     {
         $plan = $subscription->plan;
         $bagsForCycle = $plan->getBagsForCycle($subscription->billing_cycle);
 
+        // Banking Logic: unused bags roll over
+        // Calculate unused bags from previous period
+        $unusedBags = max(0, $subscription->bags_plan_balance);
+
+        // Update new balance = new allocation + unused bags
+        $newBalance = $bagsForCycle + $unusedBags;
+
+        // Update available bags = new balance
+        // Note: bags_plan_total remains strictly the plan's base amount for reference
+        // bags_plan_balance effectively becomes the "banked + new" total
+
         $subscription->update([
             'bags_plan_total' => $bagsForCycle,
-            'bags_plan_balance' => $bagsForCycle,
+            'bags_plan_balance' => $newBalance,
             'bags_plan_used' => 0,
-            'bags_available' => $bagsForCycle,
+            'bags_available' => $newBalance,
+        ]);
+
+        Log::info("Reset bag allocations with banking", [
+            'subscription_id' => $subscription->id,
+            'rolled_over' => $unusedBags,
+            'new_balance' => $newBalance
         ]);
     }
 

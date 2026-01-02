@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class UserSubscription extends Model
 {
+    // LCE 2.0 Subscriptions
     protected $table = 'lce_user_subscriptions';
 
     // Status constants

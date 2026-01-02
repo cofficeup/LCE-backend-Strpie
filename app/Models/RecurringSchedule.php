@@ -12,6 +12,7 @@ class RecurringSchedule extends Model
 
     protected $fillable = [
         'user_id',
+        'frequency',
         'schedule_monday',
         'schedule_tuesday',
         'schedule_wednesday',
@@ -59,6 +60,14 @@ class RecurringSchedule extends Model
 
         if ($date->lt($this->start_date)) return false;
         if ($this->end_date && $date->gt($this->end_date)) return false;
+
+        if ($this->frequency === 'bi_weekly') {
+            // Check if it's an "on" week relative to start date
+            $weeksDiff = $date->diffInWeeks($this->start_date);
+            if ($weeksDiff % 2 !== 0) {
+                return false;
+            }
+        }
 
         return true;
     }

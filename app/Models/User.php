@@ -11,6 +11,7 @@ class User extends Authenticatable
 {
     use HasApiTokens, HasFactory, Notifiable;
 
+    // LCE 2.0 User Model
     protected $table = 'lce_user_info';
 
     protected $fillable = [

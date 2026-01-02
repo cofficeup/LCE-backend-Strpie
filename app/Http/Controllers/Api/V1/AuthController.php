@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\Role;
+use App\Models\Credit;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -40,6 +41,16 @@ class AuthController extends Controller
         if ($customerRole) {
             $user->roles()->attach($customerRole->id);
         }
+
+        // Apply $20 Welcome Credit
+        Credit::create([
+            'user_id' => $user->id,
+            'type' => 'welcome',
+            'description' => 'Welcome Credit',
+            'amount' => 20.00,
+            'balance' => 20.00,
+            'used' => false,
+        ]);
 
         $token = $user->createToken('auth_token')->plainTextToken;
 

@@ -19,6 +19,8 @@ use App\Http\Controllers\Api\V1\Admin\HolidayController;
 use App\Http\Controllers\Api\V1\Admin\PricingController;
 use App\Http\Controllers\Api\V1\Admin\PromoCodeController;
 use App\Http\Controllers\Api\V1\Admin\ProcessingSiteController;
+use App\Http\Controllers\Api\V1\Admin\ImpersonationController;
+use App\Http\Controllers\Api\V1\Admin\AdminCustomerController;
 use App\Http\Controllers\Api\V1\RecurringScheduleController;
 
 
@@ -155,4 +157,11 @@ Route::prefix('v1/admin')
 
         // Processing Sites
         Route::apiResource('sites', ProcessingSiteController::class);
+
+        // Impersonation
+        Route::post('/users/{id}/impersonate', [ImpersonationController::class, 'impersonate']);
+
+        // Admin Customers
+        Route::get('/customers', [AdminCustomerController::class, 'index']);
+        Route::get('/customers/{id}', [AdminCustomerController::class, 'show']);
     });

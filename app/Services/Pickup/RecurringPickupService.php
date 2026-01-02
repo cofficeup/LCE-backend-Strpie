@@ -40,6 +40,11 @@ class RecurringPickupService
         $count = 0;
 
         foreach ($schedules as $schedule) {
+            // Check bi-weekly logic
+            if (!$schedule->shouldGenerateForDate($date)) {
+                continue;
+            }
+
             try {
                 // Check if pickup already exists for this date
                 $exists = Pickup::where('user_id', $schedule->user_id)

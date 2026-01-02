@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class Credit extends Model
 {
+    // LCE 2.0 Credits
     protected $table = 'lce_user_credits';
 
     protected $fillable = [
