@@ -15,7 +15,7 @@ class InvoiceService
     }
 
     const INVOICE_TYPES = ['ppo', 'subscription_overage', 'adjustment', 'refund'];
-    const STATUSES = ['draft', 'pending_payment', 'paid', 'refunded'];
+    const STATUSES = ['draft', 'pending_payment', 'paid', 'payment_failed', 'partially_refunded', 'refunded'];
     const LINE_TYPES = [
         'weight',
         'minimum_adjustment',
@@ -204,8 +204,10 @@ class InvoiceService
     {
         $allowed = [
             'draft' => ['pending_payment'],
-            'pending_payment' => ['paid'],
-            'paid' => ['refunded'],
+            'pending_payment' => ['paid', 'payment_failed'],
+            'payment_failed' => ['pending_payment'], // Allow retry
+            'paid' => ['partially_refunded', 'refunded'],
+            'partially_refunded' => ['refunded'], // Allow full refund after partial
         ];
 
         if (!isset($allowed[$from]) || !in_array($to, $allowed[$from], true)) {
@@ -247,6 +249,42 @@ class InvoiceService
             'refunded_at' => now(),
             'metadata' => array_merge($invoice->metadata ?? [], [
                 'refund_reason' => $reason,
+            ]),
+        ]);
+
+        return $invoice;
+    }
+
+    /**
+     * Mark invoice as payment failed.
+     */
+    public function markPaymentFailed(Invoice $invoice, ?string $reason = null): Invoice
+    {
+        $this->assertTransitionAllowed($invoice->status, 'payment_failed');
+
+        $invoice->update([
+            'status' => 'payment_failed',
+            'metadata' => array_merge($invoice->metadata ?? [], [
+                'payment_failure_reason' => $reason,
+                'payment_failed_at' => now()->toIso8601String(),
+            ]),
+        ]);
+
+        return $invoice;
+    }
+
+    /**
+     * Mark invoice as partially refunded.
+     */
+    public function markPartiallyRefunded(Invoice $invoice, float $amountRefunded): Invoice
+    {
+        $this->assertTransitionAllowed($invoice->status, 'partially_refunded');
+
+        $invoice->update([
+            'status' => 'partially_refunded',
+            'metadata' => array_merge($invoice->metadata ?? [], [
+                'partial_refund_amount' => $amountRefunded,
+                'partial_refund_at' => now()->toIso8601String(),
             ]),
         ]);
 

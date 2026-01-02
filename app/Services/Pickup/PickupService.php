@@ -17,15 +17,21 @@ class PickupService
     protected BillingService $billing;
     protected SubscriptionService $subscriptions;
     protected InvoiceService $invoices;
+    protected ZoneService $zones;
+    protected HolidayService $holidays;
 
     public function __construct(
         BillingService $billing,
         SubscriptionService $subscriptions,
-        InvoiceService $invoices
+        InvoiceService $invoices,
+        ZoneService $zones,
+        HolidayService $holidays
     ) {
         $this->billing = $billing;
         $this->subscriptions = $subscriptions;
         $this->invoices = $invoices;
+        $this->zones = $zones;
+        $this->holidays = $holidays;
     }
 
     /**
@@ -34,7 +40,7 @@ class PickupService
     public function createPPOPickup(User $user, array $data): array
     {
         // 🚨 ENFORCE SCHEDULING & CUTOFF RULES
-        $this->enforceSchedulingRules($data['pickup_date'] ?? null);
+        $this->enforceSchedulingRules($data['pickup_date'] ?? null, $user);
 
         // 1️⃣ Validate input
         if (empty($data['estimated_weight']) || $data['estimated_weight'] <= 0) {
@@ -87,7 +93,7 @@ class PickupService
         array $data
     ): array {
         // 🚨 ENFORCE SCHEDULING & CUTOFF RULES
-        $this->enforceSchedulingRules($data['pickup_date'] ?? null);
+        $this->enforceSchedulingRules($data['pickup_date'] ?? null, $user);
 
         // 1️⃣ Validate subscription
         if ($subscription->status !== 'active') {
@@ -148,7 +154,7 @@ class PickupService
     public function confirmPickup(User $user, array $data): array
     {
         // 1️⃣ Enforce scheduling rules
-        $this->enforceSchedulingRules($data['pickup_date'] ?? null);
+        $this->enforceSchedulingRules($data['pickup_date'] ?? null, $user);
 
         return DB::transaction(function () use ($user, $data) {
 
@@ -187,13 +193,23 @@ class PickupService
     /**
      * Enforce pickup scheduling & cutoff rules.
      */
-    protected function enforceSchedulingRules(?string $pickupDate = null): void
+    protected function enforceSchedulingRules(?string $pickupDate, User $user): void
     {
         $timezone = config('pickups.timezone');
         $cutoffHour = (int) config('pickups.cutoff_hour');
         $allowSameDay = (bool) config('pickups.allow_same_day');
 
         $now = Carbon::now($timezone);
+        $userZip = $user->zip; // Assuming access to zip directly
+
+        // 1. Zone Validation (If user has a zip)
+        if ($userZip) {
+            if (!$this->zones->isServiceable($userZip)) {
+                throw new PickupSchedulingException(
+                    "Service is not available in your area ($userZip)."
+                );
+            }
+        }
 
         if (!$pickupDate) {
             return;
@@ -202,25 +218,43 @@ class PickupService
         $requested = Carbon::parse($pickupDate, $timezone)->startOfDay();
         $today = $now->copy()->startOfDay();
 
-        // Reject past dates
+        // 2. Reject past dates
         if ($requested->lt($today)) {
             throw new PickupSchedulingException(
                 'Cannot schedule pickup for a past date. Please select today or a future date.'
             );
         }
 
-        // Same-day not allowed
+        // 3. Same-day not allowed
         if (!$allowSameDay && $requested->isSameDay($now)) {
             throw new PickupSchedulingException(
                 'Same-day pickups are not available. Please select the next available date.'
             );
         }
 
-        // Cutoff enforcement
+        // 4. Cutoff enforcement
         if ($requested->isSameDay($now) && $now->hour >= $cutoffHour) {
             throw new PickupSchedulingException(
                 'Pickup cutoff time has passed. Please select the next available date.'
             );
+        }
+
+        // 5. Holiday Validation
+        if ($this->holidays->isHoliday($pickupDate)) {
+            $holiday = $this->holidays->getHoliday($pickupDate);
+            throw new PickupSchedulingException(
+                "Pickup not available on holidays: {$holiday->holiday_name}"
+            );
+        }
+
+        // 6. Service Day Validation (If user has zip)
+        if ($userZip) {
+            $check = $this->zones->isAvailableOnDate($userZip, $pickupDate);
+            if (!$check['available']) {
+                throw new PickupSchedulingException(
+                    $check['reason'] ?? 'Service not available on this date'
+                );
+            }
         }
     }
 }

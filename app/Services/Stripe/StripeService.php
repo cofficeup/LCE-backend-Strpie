@@ -68,6 +68,8 @@ class StripeService
         }
 
         try {
+            $idempotencyKey = "ppo_intent_invoice_{$invoice->id}";
+
             $paymentIntent = $this->stripe->paymentIntents->create([
                 'amount' => $amountCents,
                 'currency' => strtolower($invoice->currency ?? config('stripe.currency')),
@@ -80,6 +82,8 @@ class StripeService
                 'automatic_payment_methods' => [
                     'enabled' => true,
                 ],
+            ], [
+                'idempotency_key' => $idempotencyKey,
             ]);
 
             return [
@@ -124,7 +128,11 @@ class StripeService
                 $params['amount'] = $amountCents;
             }
 
-            return $this->stripe->refunds->create($params);
+            $idempotencyKey = "refund_payment_{$payment->id}_" . ($amountCents ?? 'full');
+
+            return $this->stripe->refunds->create($params, [
+                'idempotency_key' => $idempotencyKey,
+            ]);
         } catch (ApiErrorException $e) {
             throw new \RuntimeException('Failed to process refund: ' . $e->getMessage());
         }

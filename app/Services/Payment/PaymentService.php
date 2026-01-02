@@ -28,26 +28,43 @@ class PaymentService
      */
     public function createPaymentIntent(Invoice $invoice, User $user): array
     {
+        // GUARD 1: Invoice already paid
+        if ($invoice->isPaid()) {
+            throw new \DomainException('Invoice already paid.');
+        }
+
+        // GUARD 2: Invoice already refunded
+        if ($invoice->isRefunded()) {
+            throw new \DomainException('Invoice has been refunded.');
+        }
+
         // Validate invoice state
-        if (!in_array($invoice->status, ['draft', 'pending_payment'])) {
+        if (!in_array($invoice->status, ['draft', 'pending_payment', 'payment_failed'])) {
             throw new \DomainException('Invoice is not payable. Current status: ' . $invoice->status);
         }
 
-        // Check for existing pending payment
+        // GUARD 3: Check for existing active payment (pending or succeeded)
         $existingPayment = Payment::where('invoice_id', $invoice->id)
-            ->where('status', Payment::STATUS_PENDING)
+            ->whereIn('status', [Payment::STATUS_PENDING, Payment::STATUS_SUCCEEDED])
             ->first();
 
-        if ($existingPayment && $existingPayment->stripe_payment_intent_id) {
-            // Return existing payment intent
-            $intent = $this->stripe->getPaymentIntent($existingPayment->stripe_payment_intent_id);
-            return [
-                'payment_intent_id' => $intent->id,
-                'client_secret' => $intent->client_secret,
-                'amount' => $invoice->total,
-                'currency' => $invoice->currency ?? 'USD',
-                'payment_id' => $existingPayment->id,
-            ];
+        if ($existingPayment) {
+            if ($existingPayment->status === Payment::STATUS_SUCCEEDED) {
+                throw new \DomainException('Payment already completed for this invoice.');
+            }
+
+            // Return existing pending payment intent
+            if ($existingPayment->stripe_payment_intent_id) {
+                $intent = $this->stripe->getPaymentIntent($existingPayment->stripe_payment_intent_id);
+                return [
+                    'payment_intent_id' => $intent->id,
+                    'client_secret' => $intent->client_secret,
+                    'amount' => $invoice->total,
+                    'currency' => $invoice->currency ?? 'USD',
+                    'payment_id' => $existingPayment->id,
+                    'existing' => true,
+                ];
+            }
         }
 
         return DB::transaction(function () use ($invoice, $user) {
@@ -109,6 +126,19 @@ class PaymentService
                 ]);
             }
 
+            // Audit log for payment success
+            AuditLog::create([
+                'user_id' => $payment->user_id,
+                'action' => 'payment_succeeded',
+                'entity_type' => 'payment',
+                'entity_id' => $payment->id,
+                'metadata' => [
+                    'invoice_id' => $payment->invoice_id,
+                    'amount' => $payment->amount,
+                    'stripe_payment_intent_id' => $payment->stripe_payment_intent_id,
+                ],
+            ]);
+
             Log::info('Payment succeeded: ' . $payment->stripe_payment_intent_id);
         });
     }
@@ -127,66 +157,38 @@ class PaymentService
 
         // Idempotency: skip if already failed
         if ($payment->status === Payment::STATUS_FAILED) {
+            Log::info('Payment already marked as failed: ' . $paymentIntentId);
             return;
         }
 
-        $payment->update([
-            'status' => Payment::STATUS_FAILED,
-            'failure_reason' => $reason,
-        ]);
-
-        Log::info('Payment failed: ' . $paymentIntentId . ' - ' . $reason);
-    }
-
-    /**
-     * Process refund for an invoice.
-     */
-    public function processRefund(Invoice $invoice, string $reason, ?User $admin = null): Payment
-    {
-        // Find successful payment
-        $payment = Payment::where('invoice_id', $invoice->id)
-            ->where('status', Payment::STATUS_SUCCEEDED)
-            ->first();
-
-        if (!$payment) {
-            throw new \DomainException('No successful payment found for this invoice');
-        }
-
-        if (!$payment->stripe_payment_intent_id) {
-            throw new \DomainException('Payment has no Stripe payment intent');
-        }
-
-        return DB::transaction(function () use ($invoice, $payment, $reason, $admin) {
-            // Issue Stripe refund
-            $refund = $this->stripe->refundPayment($payment);
-
+        DB::transaction(function () use ($payment, $reason) {
             // Update payment
             $payment->update([
-                'status' => Payment::STATUS_REFUNDED,
-                'stripe_refund_id' => $refund->id,
-                'refunded_at' => now(),
+                'status' => Payment::STATUS_FAILED,
+                'failure_reason' => $reason,
             ]);
 
             // Update invoice
-            $this->invoices->markRefunded($invoice, $reason);
+            $invoice = $payment->invoice;
+            if ($invoice && $invoice->status === 'pending_payment') {
+                $this->invoices->markPaymentFailed($invoice, $reason);
+            }
 
-            // Create audit log
+            // Audit log for payment failure
             AuditLog::create([
-                'user_id' => $admin?->id,
-                'action' => 'invoice_refund',
-                'entity_type' => 'invoice',
-                'entity_id' => $invoice->id,
+                'user_id' => $payment->user_id,
+                'action' => 'payment_failed',
+                'entity_type' => 'payment',
+                'entity_id' => $payment->id,
                 'metadata' => [
-                    'reason' => $reason,
-                    'payment_id' => $payment->id,
-                    'stripe_refund_id' => $refund->id,
+                    'invoice_id' => $payment->invoice_id,
                     'amount' => $payment->amount,
+                    'failure_reason' => $reason,
+                    'stripe_payment_intent_id' => $payment->stripe_payment_intent_id,
                 ],
             ]);
 
-            Log::info('Refund processed: ' . $refund->id . ' for invoice: ' . $invoice->id);
-
-            return $payment->fresh();
+            Log::info('Payment failed: ' . $payment->stripe_payment_intent_id . ' - ' . $reason);
         });
     }
 

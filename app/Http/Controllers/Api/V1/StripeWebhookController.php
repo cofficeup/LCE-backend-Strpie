@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\StripeWebhookEvent;
 use App\Services\Stripe\StripeService;
 use App\Services\Payment\PaymentService;
+use App\Services\Payment\RefundService;
+use App\Services\Subscription\SubscriptionWebhookHandler;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
@@ -14,11 +16,19 @@ class StripeWebhookController extends Controller
 {
     protected StripeService $stripeService;
     protected PaymentService $paymentService;
+    protected RefundService $refundService;
+    protected SubscriptionWebhookHandler $subscriptionHandler;
 
-    public function __construct(StripeService $stripeService, PaymentService $paymentService)
-    {
+    public function __construct(
+        StripeService $stripeService,
+        PaymentService $paymentService,
+        RefundService $refundService,
+        SubscriptionWebhookHandler $subscriptionHandler
+    ) {
         $this->stripeService = $stripeService;
         $this->paymentService = $paymentService;
+        $this->refundService = $refundService;
+        $this->subscriptionHandler = $subscriptionHandler;
     }
 
     /**
@@ -66,6 +76,7 @@ class StripeWebhookController extends Controller
             Log::error('Stripe webhook processing failed: ' . $e->getMessage(), [
                 'event_id' => $event->id,
                 'type' => $event->type,
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json(['error' => 'Processing failed'], 500);
@@ -77,23 +88,76 @@ class StripeWebhookController extends Controller
      */
     protected function processEvent(\Stripe\Event $event): void
     {
-        $paymentIntent = $event->data->object;
+        $object = $event->data->object;
 
         switch ($event->type) {
+            // ===============================
+            // Payment Intent Events (PPO)
+            // ===============================
             case 'payment_intent.succeeded':
-                Log::info('Processing payment_intent.succeeded: ' . $paymentIntent->id);
-                $this->paymentService->markPaymentSucceeded($paymentIntent->id);
+                Log::info('Processing payment_intent.succeeded: ' . $object->id);
+                $this->paymentService->markPaymentSucceeded($object->id);
                 break;
 
             case 'payment_intent.payment_failed':
-                Log::info('Processing payment_intent.payment_failed: ' . $paymentIntent->id);
-                $failureMessage = $paymentIntent->last_payment_error->message ?? 'Payment failed';
-                $this->paymentService->markPaymentFailed($paymentIntent->id, $failureMessage);
+                Log::info('Processing payment_intent.payment_failed: ' . $object->id);
+                $failureMessage = $object->last_payment_error->message ?? 'Payment failed';
+                $this->paymentService->markPaymentFailed($object->id, $failureMessage);
                 break;
 
             case 'charge.refunded':
-                Log::info('Processing charge.refunded: ' . $paymentIntent->id);
-                // Refunds are handled via admin action, not webhook
+                Log::info('Processing charge.refunded: ' . $object->id);
+                $paymentIntentId = $object->payment_intent;
+                $refundId = $object->refunds->data[0]->id ?? null;
+                $amountRefunded = $object->amount_refunded ?? 0;
+
+                if ($paymentIntentId && $refundId) {
+                    // Handle PPO refunds
+                    $this->refundService->handleRefundFromWebhook(
+                        $paymentIntentId,
+                        $refundId,
+                        $amountRefunded
+                    );
+
+                    // Handle subscription refunds (partial refund support)
+                    $this->subscriptionHandler->handleChargeRefunded($object);
+                }
+                break;
+
+            // ===============================
+            // Subscription Invoice Events
+            // ===============================
+            case 'invoice.paid':
+                Log::info('Processing invoice.paid: ' . $object->id);
+                $this->subscriptionHandler->handleInvoicePaid($object);
+                break;
+
+            case 'invoice.payment_failed':
+                Log::info('Processing invoice.payment_failed: ' . $object->id);
+                $this->subscriptionHandler->handleInvoicePaymentFailed($object);
+                break;
+
+            case 'invoice.finalized':
+                Log::info('Processing invoice.finalized: ' . $object->id);
+                $this->subscriptionHandler->handleInvoiceFinalized($object);
+                break;
+
+            // ===============================
+            // Subscription Lifecycle Events
+            // ===============================
+            case 'customer.subscription.updated':
+                Log::info('Processing customer.subscription.updated: ' . $object->id);
+                $this->subscriptionHandler->handleSubscriptionUpdated($object);
+                break;
+
+            case 'customer.subscription.deleted':
+                Log::info('Processing customer.subscription.deleted: ' . $object->id);
+                $this->subscriptionHandler->handleSubscriptionDeleted($object);
+                break;
+
+            case 'customer.subscription.created':
+                Log::info('Subscription created in Stripe: ' . $object->id);
+                // Typically handled during local subscription creation
                 break;
 
             default:

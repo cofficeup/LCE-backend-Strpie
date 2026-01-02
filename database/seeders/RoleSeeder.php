@@ -16,13 +16,13 @@ class RoleSeeder extends Seeder
         $csrRole = Role::create(['name' => 'csr']); // Customer Service Rep
 
         // Assign roles to users
-        $admin = User::where('email', 'admin@lce.com')->first();
+        $admin = User::where('email', 'admin@example.com')->first();
         if ($admin) {
             $admin->roles()->attach($adminRole->id);
         }
 
         // Assign customer role to all other users
-        $customers = User::where('email', '!=', 'admin@lce.com')->get();
+        $customers = User::where('email', '!=', 'admin@example.com')->get();
         foreach ($customers as $customer) {
             $customer->roles()->attach($customerRole->id);
         }

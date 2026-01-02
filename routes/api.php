@@ -12,6 +12,14 @@ use App\Http\Controllers\Api\V1\PaymentController;
 use App\Http\Controllers\Api\V1\StripeWebhookController;
 use App\Http\Controllers\Api\V1\Admin\AdminInvoiceController;
 use App\Http\Controllers\Api\V1\Admin\AdminDashboardController;
+use App\Http\Controllers\Api\V1\Admin\AdminSubscriptionController;
+use App\Http\Controllers\Api\V1\ZoneCheckController;
+use App\Http\Controllers\Api\V1\Admin\ZoneController;
+use App\Http\Controllers\Api\V1\Admin\HolidayController;
+use App\Http\Controllers\Api\V1\Admin\PricingController;
+use App\Http\Controllers\Api\V1\Admin\PromoCodeController;
+use App\Http\Controllers\Api\V1\Admin\ProcessingSiteController;
+use App\Http\Controllers\Api\V1\RecurringScheduleController;
 
 
 /*
@@ -21,6 +29,7 @@ use App\Http\Controllers\Api\V1\Admin\AdminDashboardController;
 */
 
 Route::get('/health', HealthController::class);
+Route::get('v1/zones/check', [ZoneCheckController::class, 'check']);
 
 /*
 |--------------------------------------------------------------------------
@@ -56,9 +65,16 @@ Route::prefix('v1')
         Route::put('/pickups/{id}', [PickupController::class, 'update']);
 
         // Subscriptions
+        Route::get('/subscriptions/plans', [SubscriptionController::class, 'plans']);
+        Route::get('/subscriptions/current', [SubscriptionController::class, 'current']);
+        Route::get('/subscriptions/check-pickup', [SubscriptionController::class, 'checkPickup']);
         Route::post('/subscriptions', [SubscriptionController::class, 'store']);
-        Route::post('/subscriptions/{id}/activate', [SubscriptionController::class, 'activate']);
         Route::post('/subscriptions/{id}/cancel', [SubscriptionController::class, 'cancel']);
+        Route::post('/subscriptions/{id}/reactivate', [SubscriptionController::class, 'reactivate']);
+        Route::post('/subscriptions/{id}/pause', [SubscriptionController::class, 'pause']);
+        Route::post('/subscriptions/{id}/resume', [SubscriptionController::class, 'resume']);
+        Route::post('/subscriptions/{id}/upgrade', [SubscriptionController::class, 'upgrade']);
+        Route::post('/subscriptions/{id}/downgrade', [SubscriptionController::class, 'downgrade']);
 
         // Billing
         Route::post('/billing/ppo/preview', [BillingController::class, 'ppoPreview']);
@@ -74,6 +90,9 @@ Route::prefix('v1')
         // Payments
         Route::post('/payments/intent', [PaymentController::class, 'createIntent']);
         Route::get('/payments/status/{invoice}', [PaymentController::class, 'status']);
+
+        // Recurring Schedules
+        Route::apiResource('recurring-schedules', RecurringScheduleController::class);
     });
 
 
@@ -105,4 +124,35 @@ Route::prefix('v1/admin')
         // Admin Dashboard
         Route::get('/dashboard/summary', [AdminDashboardController::class, 'summary']);
         Route::get('/dashboard/revenue', [AdminDashboardController::class, 'revenue']);
+
+        // Admin Subscription Plans
+        Route::get('/subscription-plans', [AdminSubscriptionController::class, 'listPlans']);
+        Route::post('/subscription-plans', [AdminSubscriptionController::class, 'createPlan']);
+        Route::put('/subscription-plans/{id}', [AdminSubscriptionController::class, 'updatePlan']);
+        Route::post('/subscription-plans/{id}/sync', [AdminSubscriptionController::class, 'syncPlanToStripe']);
+        Route::post('/subscription-plans/sync-all', [AdminSubscriptionController::class, 'syncAllPlansToStripe']);
+
+        // Admin Subscriptions
+        Route::get('/subscriptions', [AdminSubscriptionController::class, 'listSubscriptions']);
+        Route::get('/subscriptions/{id}/history', [AdminSubscriptionController::class, 'billingHistory']);
+        Route::post('/subscriptions/{id}/upgrade', [AdminSubscriptionController::class, 'forceUpgrade']);
+        Route::post('/subscriptions/{id}/downgrade', [AdminSubscriptionController::class, 'forceDowngrade']);
+        Route::post('/subscriptions/{id}/proration', [AdminSubscriptionController::class, 'applyManualProration']);
+        Route::post('/subscriptions/{id}/cancel', [AdminSubscriptionController::class, 'cancelImmediately']);
+
+        // Admin Pickup Zones AND Holidays
+        Route::apiResource('zones', ZoneController::class);
+        Route::apiResource('holidays', HolidayController::class);
+
+        // Pricing & Promos
+        Route::get('pricing/items', [PricingController::class, 'items']);
+        Route::post('pricing/items', [PricingController::class, 'storeItem']);
+        Route::get('pricing/lists', [PricingController::class, 'lists']);
+        Route::post('pricing/lists', [PricingController::class, 'storeList']);
+        Route::post('pricing/lists/{id}/prices', [PricingController::class, 'updateListPrices']);
+
+        Route::apiResource('promos', PromoCodeController::class);
+
+        // Processing Sites
+        Route::apiResource('sites', ProcessingSiteController::class);
     });

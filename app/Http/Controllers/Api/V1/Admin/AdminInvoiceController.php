@@ -4,18 +4,19 @@ namespace App\Http\Controllers\Api\V1\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Invoice;
-use App\Services\Payment\PaymentService;
+use App\Services\Payment\RefundService;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AdminInvoiceController extends Controller
 {
-    protected PaymentService $paymentService;
+    protected RefundService $refundService;
 
-    public function __construct(PaymentService $paymentService)
+    public function __construct(RefundService $refundService)
     {
-        $this->paymentService = $paymentService;
+        $this->refundService = $refundService;
     }
+
 
     public function index(Request $request)
     {
@@ -125,7 +126,7 @@ class AdminInvoiceController extends Controller
         }
 
         try {
-            $payment = $this->paymentService->processRefund(
+            $payment = $this->refundService->processRefund(
                 $invoice,
                 $request->reason,
                 $request->user() // admin user for audit log

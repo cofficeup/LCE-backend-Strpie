@@ -17,6 +17,11 @@ class DatabaseSeeder extends Seeder
             RoleSeeder::class,
             UserSubscriptionSeeder::class,
             CreditSeeder::class,
+            ZoneSeeder::class,
+            PricingSeeder::class,
+            PromoCodeSeeder::class,
+            ProcessingSiteSeeder::class,
+            RecurringScheduleSeeder::class,
         ]);
     }
 }
