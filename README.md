@@ -10,14 +10,47 @@ A fully modernized, service-driven backend API for a laundry management platform
 
 ## 📚 Documentation Center
 
+For detailed documentation on the backend API, see the various documentation files in the project root.
 
+## 🧘 YogaAI Demo UI
 
-## 🖥️ Live Demo
+**NEW:** A complete, production-ready demo UI for an AI-powered yoga instruction platform has been added to this repository.
 
-We have included a **React-based Demo Frontend** to test the API immediately without any installation.
+### Quick Start
+```bash
+cd demo-ui
+npm install
+npm run dev
+```
+
+Visit `http://localhost:3000` and login with:
+- **Email:** sarah.johnson@example.com
+- **Password:** password123 (or any password)
+
+### Features
+- ✨ Complete authentication flow (login, signup, forgot password)
+- 📊 Interactive dashboard with usage statistics
+- 🎬 Multi-step session builder (4-step wizard)
+- 🎥 Video player with controls and session details
+- 📚 Video library/history
+- 💳 Subscription management with 3 tiers
+- ⚙️ Account settings and preferences
+
+**Tech Stack:** Next.js 14, TypeScript, Tailwind CSS, Lucide Icons
+
+**Documentation:**
+- [Complete Guide](./DEMO_UI_GUIDE.md) - Full documentation
+- [Demo UI README](./demo-ui/README.md) - Quick start guide
+- [Feature Checklist](./demo-ui/FEATURE_CHECKLIST.md) - All features documented
+
+---
+
+## 🖥️ LCE Backend API
+
+The main Laravel backend for the Laundry Care Express platform.
 
 1.  Start the backend: `php artisan serve`
-3.  Login with: `customer@example.com` / `password`
+2.  Login with: `customer@example.com` / `password`
 
 ---
 
