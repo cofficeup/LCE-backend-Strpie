@@ -1,0 +1,40 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+/**
+ * Backup of lce_processing_sites table (Aug 8 snapshot)
+ * Note: This is a backup table, primary should use ProcessingSite model
+ */
+class ProcessingSitesBackup extends Model
+{
+    protected $table = 'lce_processing_sites_8aug';
+    public $timestamps = false;
+
+    protected $fillable = [
+        'name',
+        'phone_1',
+        'phone_2',
+        'address_1',
+        'address_2',
+        'city',
+        'country',
+        'zip',
+        'area',
+        'print_align',
+        'wf',
+        'dc',
+        'email',
+        'prices_lists_id',
+        'area_group_id',
+        'user_group_id',
+    ];
+
+    protected $casts = [
+        'wf' => 'boolean',
+        'dc' => 'boolean',
+        'prices_lists_id' => 'integer',
+    ];
+}

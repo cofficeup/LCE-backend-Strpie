@@ -2,88 +2,81 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class PickupZone extends Model
 {
-    use HasFactory;
+    protected $table = 'lce_pickup_zones';
 
-    protected $table = 'pickup_zones';
+    public $timestamps = false;
 
     protected $fillable = [
-        'zip_code',
+        'zip',
         'city',
         'state',
-        'service_monday',
-        'service_tuesday',
-        'service_wednesday',
-        'service_thursday',
-        'service_friday',
-        'service_saturday',
-        'service_sunday',
-        'area_code',
-        'driver_ids',
-        'polygon_coordinates',
-        'geo_enabled',
-        'display_order',
-        'active',
+        'day_monday',
+        'day_tuesday',
+        'day_wednesday',
+        'day_thursday',
+        'day_friday',
+        'area',
+        'drivers',
+        'order',
+        'geometry',
+        'geo_location',
     ];
 
     protected $casts = [
-        'service_monday' => 'boolean',
-        'service_tuesday' => 'boolean',
-        'service_wednesday' => 'boolean',
-        'service_thursday' => 'boolean',
-        'service_friday' => 'boolean',
-        'service_saturday' => 'boolean',
-        'service_sunday' => 'boolean',
-        'driver_ids' => 'array',
-        'polygon_coordinates' => 'array',
-        'geo_enabled' => 'boolean',
-        'active' => 'boolean',
+        'day_monday' => 'boolean',
+        'day_tuesday' => 'boolean',
+        'day_wednesday' => 'boolean',
+        'day_thursday' => 'boolean',
+        'day_friday' => 'boolean',
+        'order' => 'integer',
     ];
 
     /**
-     * Get service days as array.
+     * Check if service is available on a given day.
      */
-    public function getServiceDaysAttribute(): array
+    public function isServiceAvailableOnDay(string $day): bool
     {
-        return [
-            'monday' => $this->service_monday,
-            'tuesday' => $this->service_tuesday,
-            'wednesday' => $this->service_wednesday,
-            'thursday' => $this->service_thursday,
-            'friday' => $this->service_friday,
-            'saturday' => $this->service_saturday,
-            'sunday' => $this->service_sunday,
-        ];
+        $column = 'day_' . strtolower($day);
+        return $this->$column ?? false;
     }
 
     /**
-     * Check if service is available on a specific day.
+     * Get available days as array.
      */
-    public function isServiceAvailableOnDay(string $dayOfWeek): bool
+    public function getAvailableDaysAttribute(): array
     {
-        $dayField = 'service_' . strtolower($dayOfWeek);
-        return $this->$dayField ?? false;
+        $days = [];
+        foreach (['monday', 'tuesday', 'wednesday', 'thursday', 'friday'] as $day) {
+            if ($this->{"day_{$day}"}) {
+                $days[] = ucfirst($day);
+            }
+        }
+        return $days;
     }
 
     /**
-     * Scopes
+     * Scope for active zones (has at least one service day).
      */
     public function scopeActive($query)
     {
-        return $query->where('active', true);
+        return $query->where(function ($q) {
+            $q->where('day_monday', true)
+                ->orWhere('day_tuesday', true)
+                ->orWhere('day_wednesday', true)
+                ->orWhere('day_thursday', true)
+                ->orWhere('day_friday', true);
+        });
     }
 
+    /**
+     * Scope for filtering by ZIP code.
+     */
     public function scopeForZip($query, string $zipCode)
     {
-        return $query->where('zip_code', $zipCode);
-    }
-
-    public function scopeForArea($query, string $areaCode)
-    {
-        return $query->where('area_code', $areaCode);
+        return $query->where('zip', $zipCode);
     }
 }

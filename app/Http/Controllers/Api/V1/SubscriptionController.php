@@ -23,23 +23,29 @@ class SubscriptionController extends Controller
      */
     public function plans(): JsonResponse
     {
-        $plans = SubscriptionPlan::where('is_active', true)
+        $plans = SubscriptionPlan::where('active', true)
             ->select([
                 'id',
+                'code',
                 'name',
-                'slug',
-                'description',
-                'bags_per_day',
-                'bags_per_week',
                 'bags_per_month',
-                'price_daily',
-                'price_weekly',
-                'price_monthly',
-                'price_annual',
-                'overage_policy',
-                'overage_price_per_bag',
+                'price_per_bag',
+                'billing_cycle',
+                'annual_discount',
             ])
-            ->get();
+            ->get()
+            ->map(function ($plan) {
+                return [
+                    'id' => $plan->id,
+                    'code' => $plan->code,
+                    'name' => $plan->name,
+                    'bags_per_month' => $plan->bags_per_month,
+                    'price_per_bag' => $plan->price_per_bag,
+                    'monthly_price' => $plan->monthly_price,
+                    'annual_price' => $plan->annual_price,
+                    'billing_cycle' => $plan->billing_cycle,
+                ];
+            });
 
         return response()->json([
             'success' => true,

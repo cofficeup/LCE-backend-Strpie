@@ -2,31 +2,52 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class PriceList extends Model
 {
-    use HasFactory;
+    protected $table = 'lce_prices_lists';
 
     protected $fillable = [
+        'type',
         'name',
         'description',
-        'type',
-        'zip_codes',
-        'display_order',
-        'active'
+        'zip',
+        'order',
+        'deleted',
     ];
 
-    public function items()
+    const CREATED_AT = 'cdate';
+    const UPDATED_AT = 'mdate';
+
+    public function scopeNotDeleted($query)
     {
-        return $this->belongsToMany(PricingItem::class, 'pricing_item_prices')
-            ->withPivot(['price', 'min_price'])
-            ->withTimestamps();
+        return $query->where('deleted', 'No');
     }
 
-    public function scopeActive($query)
+    public function scopeResidential($query)
     {
-        return $query->where('active', true);
+        return $query->where('type', 're');
+    }
+
+    public function scopeCommercial($query)
+    {
+        return $query->where('type', 'co');
+    }
+
+    /**
+     * Get all prices for this list.
+     */
+    public function getPrices()
+    {
+        return Price::notDeleted()->get()->map(function ($price) {
+            return [
+                'id' => $price->id,
+                'sku' => $price->sku,
+                'name' => $price->name,
+                'type' => $price->type,
+                'price' => $price->getPriceForList($this->id),
+            ];
+        });
     }
 }

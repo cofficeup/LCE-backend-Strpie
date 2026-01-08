@@ -2,36 +2,56 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class ProcessingSite extends Model
 {
-    use HasFactory;
+    protected $table = 'lce_processing_sites';
+
+    public $timestamps = false;
 
     protected $fillable = [
         'name',
-        'code',
-        'wash_fold_enabled',
-        'dry_clean_enabled',
-        'daily_capacity_lbs',
-        'address_line1',
-        'address_line2',
+        'phone_1',
+        'phone_2',
+        'address_1',
+        'address_2',
         'city',
-        'state',
-        'zip_code',
-        'served_area_codes',
-        'active'
+        'country',
+        'zip',
+        'area',
+        'print_align',
+        'wf',
+        'dc',
+        'email',
+        'prices_lists_id',
+        'area_group_id',
+        'user_group_id',
     ];
 
-    /**
-     * Check if site serves a specific area code.
-     */
-    public function servesArea(string $areaCode): bool
-    {
-        if (empty($this->served_area_codes)) return true; // Serves all if empty? Or serves none? Let's assume specific routing required.
+    protected $casts = [
+        'wf' => 'boolean',
+        'dc' => 'boolean',
+    ];
 
-        $areas = array_map('trim', explode(',', $this->served_area_codes));
-        return in_array($areaCode, $areas);
+    public function priceList()
+    {
+        return $this->belongsTo(PriceList::class, 'prices_lists_id');
+    }
+
+    /**
+     * Check if site handles wash & fold.
+     */
+    public function handlesWashFold(): bool
+    {
+        return (bool) $this->wf;
+    }
+
+    /**
+     * Check if site handles dry cleaning.
+     */
+    public function handlesDryCleaning(): bool
+    {
+        return (bool) $this->dc;
     }
 }

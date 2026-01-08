@@ -7,6 +7,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Payment extends Model
 {
+    protected $table = 'lce_payment';
+    public $timestamps = false;
+
     protected $fillable = [
         'invoice_id',
         'user_id',

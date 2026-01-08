@@ -1,0 +1,1222 @@
+{
+	"info": {
+		"_postman_id": "lce-backend-api",
+		"name": "LCE Backend API",
+		"description": "Laundry Care Express Backend API Collection - Complete API endpoints for the LCE backend system",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{auth_token}}",
+				"type": "string"
+			}
+		]
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000/api",
+			"type": "string"
+		},
+		{
+			"key": "auth_token",
+			"value": "",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "Health & Public",
+			"item": [
+				{
+					"name": "Health Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/health",
+							"host": ["{{base_url}}"],
+							"path": ["health"]
+						}
+					}
+				},
+				{
+					"name": "Zone Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/zones/check?zip=94065",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "zones", "check"],
+							"query": [
+								{
+									"key": "zip",
+									"value": "94065"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Get Subscription Plans (Public)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/subscriptions/plans",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "subscriptions", "plans"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Authentication",
+			"item": [
+				{
+					"name": "Register",
+					"request": {
+						"auth": {"type": "noauth"},
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"test@example.com\",\n    \"password\": \"password123\",\n    \"password_confirmation\": \"password123\",\n    \"first_name\": \"John\",\n    \"last_name\": \"Doe\",\n    \"phone_1\": \"555-123-4567\",\n    \"address_1\": \"123 Main St\",\n    \"city\": \"San Carlos\",\n    \"state\": \"CA\",\n    \"zip\": \"94065\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/auth/register",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "auth", "register"]
+						}
+					}
+				},
+				{
+					"name": "Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var jsonData = pm.response.json();",
+									"if (jsonData.data && jsonData.data.token) {",
+									"    pm.environment.set('auth_token', jsonData.data.token);",
+									"    pm.collectionVariables.set('auth_token', jsonData.data.token);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {"type": "noauth"},
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"test@example.com\",\n    \"password\": \"password123\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/auth/login",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "auth", "login"]
+						}
+					}
+				},
+				{
+					"name": "Get Current User",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/auth/me",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "auth", "me"]
+						}
+					}
+				},
+				{
+					"name": "Logout",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/auth/logout",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "auth", "logout"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Subscriptions",
+			"item": [
+				{
+					"name": "Get Current Subscription",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/subscriptions/current",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "subscriptions", "current"]
+						}
+					}
+				},
+				{
+					"name": "Check Pickup Eligibility",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/subscriptions/check-pickup",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "subscriptions", "check-pickup"]
+						}
+					}
+				},
+				{
+					"name": "Create Subscription",
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"plan_id\": 1,\n    \"payment_method_id\": \"pm_card_visa\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/subscriptions",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "subscriptions"]
+						}
+					}
+				},
+				{
+					"name": "Cancel Subscription",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/subscriptions/1/cancel",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "subscriptions", "1", "cancel"]
+						}
+					}
+				},
+				{
+					"name": "Pause Subscription",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/subscriptions/1/pause",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "subscriptions", "1", "pause"]
+						}
+					}
+				},
+				{
+					"name": "Resume Subscription",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/subscriptions/1/resume",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "subscriptions", "1", "resume"]
+						}
+					}
+				},
+				{
+					"name": "Reactivate Subscription",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/subscriptions/1/reactivate",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "subscriptions", "1", "reactivate"]
+						}
+					}
+				},
+				{
+					"name": "Upgrade Subscription",
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"new_plan_id\": 2\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/subscriptions/1/upgrade",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "subscriptions", "1", "upgrade"]
+						}
+					}
+				},
+				{
+					"name": "Downgrade Subscription",
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"new_plan_id\": 1\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/subscriptions/1/downgrade",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "subscriptions", "1", "downgrade"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Pickups",
+			"item": [
+				{
+					"name": "Preview Pickup",
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"pickup_date\": \"2026-01-15\",\n    \"pickup_type\": \"wf\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/pickups/preview",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "pickups", "preview"]
+						}
+					}
+				},
+				{
+					"name": "Confirm Pickup",
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"pickup_date\": \"2026-01-15\",\n    \"pickup_type\": \"wf\",\n    \"payment_method_id\": \"pm_card_visa\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/pickups/confirm",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "pickups", "confirm"]
+						}
+					}
+				},
+				{
+					"name": "Update Pickup",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"status\": \"processing\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/pickups/1",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "pickups", "1"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Billing & Payments",
+			"item": [
+				{
+					"name": "PPO Preview",
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"pickup_date\": \"2026-01-15\",\n    \"pickup_type\": \"wf\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/billing/ppo/preview",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "billing", "ppo", "preview"]
+						}
+					}
+				},
+				{
+					"name": "Create Payment Intent",
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"invoice_id\": 1,\n    \"amount\": 7000\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/payments/intent",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "payments", "intent"]
+						}
+					}
+				},
+				{
+					"name": "Check Payment Status",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/payments/status/1",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "payments", "status", "1"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Invoices",
+			"item": [
+				{
+					"name": "List Invoices",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/invoices",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "invoices"]
+						}
+					}
+				},
+				{
+					"name": "Get Invoice",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/invoices/1",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "invoices", "1"]
+						}
+					}
+				},
+				{
+					"name": "Pay Invoice",
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"payment_method_id\": \"pm_card_visa\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/invoices/1/pay",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "invoices", "1", "pay"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Credits",
+			"item": [
+				{
+					"name": "List Credits",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/credits",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "credits"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Recurring Schedules",
+			"item": [
+				{
+					"name": "List Schedules",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/recurring-schedules",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "recurring-schedules"]
+						}
+					}
+				},
+				{
+					"name": "Create Schedule",
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"day_monday\": \"Y\",\n    \"day_tuesday\": \"N\",\n    \"day_wednesday\": \"Y\",\n    \"day_thursday\": \"N\",\n    \"day_friday\": \"Y\",\n    \"delivery_type\": \"next_day\",\n    \"start_date\": \"2026-01-15\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/recurring-schedules",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "recurring-schedules"]
+						}
+					}
+				},
+				{
+					"name": "Get Schedule",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/recurring-schedules/1",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "recurring-schedules", "1"]
+						}
+					}
+				},
+				{
+					"name": "Update Schedule",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"day_monday\": \"N\",\n    \"day_friday\": \"Y\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/recurring-schedules/1",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "recurring-schedules", "1"]
+						}
+					}
+				},
+				{
+					"name": "Delete Schedule",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/recurring-schedules/1",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "recurring-schedules", "1"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Admin - Dashboard",
+			"item": [
+				{
+					"name": "Dashboard Summary",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/admin/dashboard/summary",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "dashboard", "summary"]
+						}
+					}
+				},
+				{
+					"name": "Revenue Report",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/admin/dashboard/revenue?period=monthly",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "dashboard", "revenue"],
+							"query": [
+								{"key": "period", "value": "monthly"}
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Admin - Invoices",
+			"item": [
+				{
+					"name": "List All Invoices",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/admin/invoices?page=1&per_page=20",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "invoices"],
+							"query": [
+								{"key": "page", "value": "1"},
+								{"key": "per_page", "value": "20"}
+							]
+						}
+					}
+				},
+				{
+					"name": "Export Invoices",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/admin/invoices/export?format=csv",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "invoices", "export"],
+							"query": [
+								{"key": "format", "value": "csv"}
+							]
+						}
+					}
+				},
+				{
+					"name": "Refund Invoice",
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"amount\": 50.00,\n    \"reason\": \"Customer dissatisfaction\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/admin/invoices/1/refund",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "invoices", "1", "refund"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Admin - Subscription Plans",
+			"item": [
+				{
+					"name": "List Plans",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/admin/subscription-plans",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "subscription-plans"]
+						}
+					}
+				},
+				{
+					"name": "Create Plan",
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"code\": \"SUB_M_10BAG\",\n    \"name\": \"Subscribe & Save Monthly - 10 Bags\",\n    \"bags_per_month\": 10,\n    \"price_per_bag\": 62.00,\n    \"billing_cycle\": \"monthly\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/admin/subscription-plans",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "subscription-plans"]
+						}
+					}
+				},
+				{
+					"name": "Update Plan",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"price_per_bag\": 63.00,\n    \"active\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/admin/subscription-plans/1",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "subscription-plans", "1"]
+						}
+					}
+				},
+				{
+					"name": "Sync Plan to Stripe",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/admin/subscription-plans/1/sync",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "subscription-plans", "1", "sync"]
+						}
+					}
+				},
+				{
+					"name": "Sync All Plans to Stripe",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/admin/subscription-plans/sync-all",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "subscription-plans", "sync-all"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Admin - Subscriptions",
+			"item": [
+				{
+					"name": "List Subscriptions",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/admin/subscriptions?status=active",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "subscriptions"],
+							"query": [
+								{"key": "status", "value": "active"}
+							]
+						}
+					}
+				},
+				{
+					"name": "Billing History",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/admin/subscriptions/1/history",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "subscriptions", "1", "history"]
+						}
+					}
+				},
+				{
+					"name": "Force Upgrade",
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"new_plan_id\": 3\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/admin/subscriptions/1/upgrade",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "subscriptions", "1", "upgrade"]
+						}
+					}
+				},
+				{
+					"name": "Force Downgrade",
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"new_plan_id\": 1\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/admin/subscriptions/1/downgrade",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "subscriptions", "1", "downgrade"]
+						}
+					}
+				},
+				{
+					"name": "Apply Manual Proration",
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"amount\": 15.00,\n    \"reason\": \"Manual adjustment\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/admin/subscriptions/1/proration",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "subscriptions", "1", "proration"]
+						}
+					}
+				},
+				{
+					"name": "Cancel Immediately",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/admin/subscriptions/1/cancel",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "subscriptions", "1", "cancel"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Admin - Zones",
+			"item": [
+				{
+					"name": "List Zones",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/admin/zones",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "zones"]
+						}
+					}
+				},
+				{
+					"name": "Create Zone",
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"zip\": \"94066\",\n    \"city\": \"San Bruno\",\n    \"state\": \"CA\",\n    \"day_monday\": 1,\n    \"day_tuesday\": 0,\n    \"day_wednesday\": 1,\n    \"day_thursday\": 0,\n    \"day_friday\": 1,\n    \"area\": \"SF\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/admin/zones",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "zones"]
+						}
+					}
+				},
+				{
+					"name": "Get Zone",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/admin/zones/1",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "zones", "1"]
+						}
+					}
+				},
+				{
+					"name": "Update Zone",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"day_saturday\": 1\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/admin/zones/1",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "zones", "1"]
+						}
+					}
+				},
+				{
+					"name": "Delete Zone",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/admin/zones/1",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "zones", "1"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Admin - Holidays",
+			"item": [
+				{
+					"name": "List Holidays",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/admin/holidays",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "holidays"]
+						}
+					}
+				},
+				{
+					"name": "Create Holiday",
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"date\": \"2026-12-25\",\n    \"name\": \"Christmas Day\",\n    \"area\": \"ALL\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/admin/holidays",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "holidays"]
+						}
+					}
+				},
+				{
+					"name": "Get Holiday",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/admin/holidays/1",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "holidays", "1"]
+						}
+					}
+				},
+				{
+					"name": "Update Holiday",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Christmas Holiday\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/admin/holidays/1",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "holidays", "1"]
+						}
+					}
+				},
+				{
+					"name": "Delete Holiday",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/admin/holidays/1",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "holidays", "1"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Admin - Pricing",
+			"item": [
+				{
+					"name": "List Pricing Items",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/admin/pricing/items",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "pricing", "items"]
+						}
+					}
+				},
+				{
+					"name": "Create Pricing Item",
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"sku\": \"WF_PREMIUM\",\n    \"type\": \"WF\",\n    \"name\": \"Premium Wash & Fold\",\n    \"description\": \"Premium service with organic detergent\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/admin/pricing/items",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "pricing", "items"]
+						}
+					}
+				},
+				{
+					"name": "List Price Lists",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/admin/pricing/lists",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "pricing", "lists"]
+						}
+					}
+				},
+				{
+					"name": "Create Price List",
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"type\": \"re\",\n    \"name\": \"San Francisco Premium\",\n    \"description\": \"Premium pricing for SF area\",\n    \"zip\": \"94105\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/admin/pricing/lists",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "pricing", "lists"]
+						}
+					}
+				},
+				{
+					"name": "Update List Prices",
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"prices\": [\n        {\"pricing_item_id\": 1, \"price\": 2.99},\n        {\"pricing_item_id\": 2, \"price\": 12.99}\n    ]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/admin/pricing/lists/1/prices",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "pricing", "lists", "1", "prices"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Admin - Promo Codes",
+			"item": [
+				{
+					"name": "List Promos",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/admin/promos",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "promos"]
+						}
+					}
+				},
+				{
+					"name": "Create Promo",
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"promocode\": \"NEWYEAR2026\",\n    \"promocode_type\": \"percentage\",\n    \"promocode_value\": 20,\n    \"publish\": 1,\n    \"promo_expiry_date\": \"2026-01-31\",\n    \"promocode_for\": \"all\",\n    \"promocode_description\": \"New Year 2026 Special - 20% Off\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/admin/promos",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "promos"]
+						}
+					}
+				},
+				{
+					"name": "Get Promo",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/admin/promos/1",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "promos", "1"]
+						}
+					}
+				},
+				{
+					"name": "Update Promo",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"promocode_value\": 25,\n    \"publish\": 1\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/admin/promos/1",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "promos", "1"]
+						}
+					}
+				},
+				{
+					"name": "Delete Promo",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/admin/promos/1",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "promos", "1"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Admin - Processing Sites",
+			"item": [
+				{
+					"name": "List Sites",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/admin/sites",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "sites"]
+						}
+					}
+				},
+				{
+					"name": "Create Site",
+					"request": {
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"San Carlos Facility\",\n    \"phone_1\": \"650-555-1234\",\n    \"address_1\": \"100 Industrial Way\",\n    \"city\": \"San Carlos\",\n    \"zip\": \"94070\",\n    \"area\": \"SC\",\n    \"wf\": 1,\n    \"dc\": 1,\n    \"email\": \"sancarlos@lce.com\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/admin/sites",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "sites"]
+						}
+					}
+				},
+				{
+					"name": "Get Site",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/admin/sites/1",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "sites", "1"]
+						}
+					}
+				},
+				{
+					"name": "Update Site",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"phone_2\": \"650-555-5678\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/admin/sites/1",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "sites", "1"]
+						}
+					}
+				},
+				{
+					"name": "Delete Site",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/admin/sites/1",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "admin", "sites", "1"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Webhooks",
+			"item": [
+				{
+					"name": "Stripe Webhook",
+					"request": {
+						"auth": {"type": "noauth"},
+						"method": "POST",
+						"header": [
+							{"key": "Content-Type", "value": "application/json"},
+							{"key": "Stripe-Signature", "value": "{{stripe_signature}}"}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"id\": \"evt_test\",\n    \"type\": \"payment_intent.succeeded\",\n    \"data\": {}\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/webhooks/stripe",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "webhooks", "stripe"]
+						}
+					}
+				}
+			]
+		}
+	]
+}

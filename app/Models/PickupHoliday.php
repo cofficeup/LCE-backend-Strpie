@@ -2,59 +2,54 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Carbon\Carbon;
 
 class PickupHoliday extends Model
 {
-    use HasFactory;
+    protected $table = 'lce_pickup_nonworking_days';
 
-    protected $table = 'pickup_holidays';
+    public $timestamps = false;
 
     protected $fillable = [
-        'holiday_date',
-        'holiday_name',
-        'area_code',
-        'active',
-    ];
-
-    protected $casts = [
-        'holiday_date' => 'date',
-        'active' => 'boolean',
+        'date',
+        'name',
+        'area',
     ];
 
     /**
-     * Scopes
+     * Check if a date is a holiday in an area.
      */
-    public function scopeActive($query)
-    {
-        return $query->where('active', true);
-    }
-
     public function scopeForDate($query, $date)
     {
-        $carbonDate = Carbon::parse($date);
-        return $query->where('holiday_date', $carbonDate->format('Y-m-d'));
+        $dateString = is_string($date) ? $date : $date->format('Y-m-d');
+        return $query->where('date', $dateString);
     }
 
-    public function scopeForArea($query, ?string $areaCode = null)
+    public function scopeForArea($query, string $area)
     {
-        // If area_code is null, get global holidays
-        // If area_code is provided, get both global and area-specific
-        return $query->where(function ($q) use ($areaCode) {
-            $q->whereNull('area_code');
-            if ($areaCode) {
-                $q->orWhere('area_code', $areaCode);
-            }
+        return $query->where(function ($q) use ($area) {
+            $q->where('area', $area)
+                ->orWhere('area', '')
+                ->orWhereNull('area');
         });
     }
 
+    /**
+     * Scope for active holidays (all holidays in legacy schema).
+     */
+    public function scopeActive($query)
+    {
+        return $query;
+    }
+
+    /**
+     * Scope for holidays within a date range.
+     */
     public function scopeInDateRange($query, $startDate, $endDate)
     {
-        return $query->whereBetween('holiday_date', [
-            Carbon::parse($startDate)->format('Y-m-d'),
-            Carbon::parse($endDate)->format('Y-m-d'),
+        return $query->whereBetween('date', [
+            $startDate->format('Y-m-d'),
+            $endDate->format('Y-m-d')
         ]);
     }
 }

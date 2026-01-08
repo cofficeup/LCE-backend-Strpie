@@ -71,13 +71,13 @@ class ZoneService
         // Check if it's a holiday
         $holiday = PickupHoliday::active()
             ->forDate($date)
-            ->forArea($zone->area_code)
+            ->forArea($zone->area)
             ->first();
 
         if ($holiday) {
             return [
                 'available' => false,
-                'reason' => 'Holiday: ' . $holiday->holiday_name,
+                'reason' => 'Holiday: ' . $holiday->name,
             ];
         }
 
@@ -108,10 +108,9 @@ class ZoneService
 
         // Get holidays for this period
         $holidays = PickupHoliday::active()
-            ->forArea($zone->area_code)
+            ->forArea($zone->area)
             ->inDateRange($startDate, $endDate)
-            ->pluck('holiday_date')
-            ->map(fn($date) => $date->format('Y-m-d'))
+            ->pluck('date')
             ->toArray();
 
         $availableDates = [];
@@ -136,7 +135,7 @@ class ZoneService
         return [
             'success' => true,
             'zip_code' => $zipCode,
-            'area_code' => $zone->area_code,
+            'area' => $zone->area,
             'month' => $startDate->format('Y-m'),
             'dates' => $availableDates,
         ];

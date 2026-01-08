@@ -2,60 +2,80 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Carbon\Carbon;
 
 class PromoCode extends Model
 {
-    use HasFactory;
+    protected $table = 'lce_promo_codes';
+
+    public $timestamps = false;
 
     protected $fillable = [
-        'code',
-        'discount_type',
-        'discount_value',
-        'max_uses',
-        'current_uses',
-        'min_order_amount',
-        'start_date',
-        'expiry_date',
-        'applies_to',
-        'description',
-        'active'
+        'promocode',
+        'promocode_type',
+        'promocode_value',
+        'publish',
+        'promocode_time_period',
+        'time_period_value',
+        'promo_expiry_date',
+        'promocode_for',
+        'promocode_description',
+        'created_date',
     ];
 
     protected $casts = [
-        'start_date' => 'date',
-        'expiry_date' => 'date',
-        'active' => 'boolean',
-        'discount_value' => 'decimal:2',
-        'min_order_amount' => 'decimal:2',
+        'promocode_value' => 'float',
+        'publish' => 'boolean',
+        'promo_expiry_date' => 'date',
+        'created_date' => 'date',
     ];
 
     /**
-     * Check if promo code is valid for use.
+     * Check if promo is active and not expired.
      */
-    public function isValid(?float $orderAmount = null): bool
+    public function isValid(): bool
     {
-        if (!$this->active) return false;
+        if (!$this->publish) {
+            return false;
+        }
 
-        $now = Carbon::now();
-
-        // Date checks
-        if ($this->start_date && $now->lt($this->start_date)) return false;
-        if ($this->expiry_date && $now->gt($this->expiry_date)) return false;
-
-        // Usage limits
-        if ($this->max_uses && $this->current_uses >= $this->max_uses) return false;
-
-        // Order amount check
-        if ($orderAmount !== null && $this->min_order_amount && $orderAmount < $this->min_order_amount) return false;
+        if ($this->promo_expiry_date && $this->promo_expiry_date->isPast()) {
+            return false;
+        }
 
         return true;
     }
 
+    /**
+     * Check if promo is percentage type.
+     */
+    public function isPercentage(): bool
+    {
+        return $this->promocode_type === 'percentage';
+    }
+
+    /**
+     * Calculate discount amount.
+     */
+    public function calculateDiscount(float $amount): float
+    {
+        if ($this->isPercentage()) {
+            return $amount * ($this->promocode_value / 100);
+        }
+        return min($this->promocode_value, $amount);
+    }
+
+    public function usages()
+    {
+        return $this->hasMany(UserPromoCode::class, 'promocode_id');
+    }
+
     public function scopeActive($query)
     {
-        return $query->where('active', true);
+        return $query->where('publish', true)
+            ->where(function ($q) {
+                $q->whereNull('promo_expiry_date')
+                    ->orWhere('promo_expiry_date', '>=', now()->toDateString());
+            });
     }
 }

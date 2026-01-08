@@ -2,64 +2,63 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class RecurringSchedule extends Model
 {
-    use HasFactory;
+    protected $table = 'lce_user_rs';
+
+    public $timestamps = false;
 
     protected $fillable = [
         'user_id',
-        'schedule_monday',
-        'schedule_tuesday',
-        'schedule_wednesday',
-        'schedule_thursday',
-        'schedule_friday',
-        'schedule_saturday',
-        'schedule_sunday',
-        'order_type',
-        'default_bags',
-        'default_weight',
+        'day_monday',
+        'day_tuesday',
+        'day_wednesday',
+        'day_thursday',
+        'day_friday',
+        'day_saturday',
+        'day_sunday',
+        'delivey_type',
+        'comments',
         'start_date',
-        'end_date',
-        'notes',
-        'active'
     ];
 
     protected $casts = [
-        'schedule_monday' => 'boolean',
-        'schedule_tuesday' => 'boolean',
-        'schedule_wednesday' => 'boolean',
-        'schedule_thursday' => 'boolean',
-        'schedule_friday' => 'boolean',
-        'schedule_saturday' => 'boolean',
-        'schedule_sunday' => 'boolean',
-        'start_date' => 'date',
-        'end_date' => 'date',
-        'active' => 'boolean',
-        'default_weight' => 'decimal:2'
+        'day_monday' => 'string', // Legacy uses varchar 'on'/null
+        'day_tuesday' => 'string',
+        'day_wednesday' => 'string',
+        'day_thursday' => 'string',
+        'day_friday' => 'string',
+        'day_saturday' => 'string',
+        'day_sunday' => 'string',
     ];
 
-    public function user(): BelongsTo
+    public function user()
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(User::class, 'user_id');
     }
 
     /**
-     * Check if pickup should be generated for a specific date.
+     * Check if scheduled for a given day.
      */
-    public function shouldGenerateForDate($date): bool
+    public function isScheduledForDay(string $day): bool
     {
-        $dayOfWeek = strtolower($date->format('l')); // monday, tuesday...
-        $field = 'schedule_' . $dayOfWeek;
+        $column = 'day_' . strtolower($day);
+        return !empty($this->$column);
+    }
 
-        if (!$this->$field) return false;
-
-        if ($date->lt($this->start_date)) return false;
-        if ($this->end_date && $date->gt($this->end_date)) return false;
-
-        return true;
+    /**
+     * Get scheduled days as array.
+     */
+    public function getScheduledDaysAttribute(): array
+    {
+        $days = [];
+        foreach (['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as $day) {
+            if (!empty($this->{"day_{$day}"})) {
+                $days[] = ucfirst($day);
+            }
+        }
+        return $days;
     }
 }

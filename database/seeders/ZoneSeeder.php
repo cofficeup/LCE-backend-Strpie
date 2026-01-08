@@ -2,46 +2,49 @@
 
 namespace Database\Seeders;
 
-use App\Models\PickupZone;
 use Illuminate\Database\Seeder;
+use App\Models\PickupZone;
 
 class ZoneSeeder extends Seeder
 {
     public function run(): void
     {
-        // 1. San Francisco (Full Service)
-        PickupZone::create([
-            'zip_code' => '94105',
-            'city' => 'San Francisco',
-            'state' => 'CA',
-            'service_monday' => true,
-            'service_tuesday' => true,
-            'service_wednesday' => true,
-            'service_thursday' => true,
-            'service_friday' => true,
-            'active' => true,
-            'geo_enabled' => false,
-        ]);
+        $zones = [
+            [
+                'zip' => '94065',
+                'city' => 'San Carlos',
+                'state' => 'CA',
+                'day_monday' => true,
+                'day_tuesday' => false,
+                'day_wednesday' => true,
+                'day_thursday' => false,
+                'day_friday' => true,
+                'area' => 'SC',
+                'geo_location' => 'SF',
+                'order' => 1,
+            ],
+            [
+                'zip' => '94402',
+                'city' => 'San Mateo',
+                'state' => 'CA',
+                'day_monday' => true,
+                'day_tuesday' => true,
+                'day_wednesday' => false,
+                'day_thursday' => true,
+                'day_friday' => false,
+                'area' => 'SM',
+                'geo_location' => 'SF',
+                'order' => 2,
+            ],
+        ];
 
-        // 2. Redwood City (MWF)
-        PickupZone::create([
-            'zip_code' => '94065',
-            'city' => 'Redwood City',
-            'state' => 'CA',
-            'service_monday' => true,
-            'service_wednesday' => true,
-            'service_friday' => true,
-            'active' => true,
-        ]);
+        foreach ($zones as $zone) {
+            PickupZone::updateOrCreate(
+                ['zip' => $zone['zip']],
+                $zone
+            );
+        }
 
-        // 3. Palo Alto (TTh)
-        PickupZone::create([
-            'zip_code' => '94301',
-            'city' => 'Palo Alto',
-            'state' => 'CA',
-            'service_tuesday' => true,
-            'service_thursday' => true,
-            'active' => true,
-        ]);
+        $this->command->info('Seeded ' . count($zones) . ' pickup zones');
     }
 }

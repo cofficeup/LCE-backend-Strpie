@@ -3,10 +3,14 @@
 return [
     'paths' => ['api/*', 'sanctum/csrf-cookie'],
     'allowed_methods' => ['*'],
-    'allowed_origins' => ['*', 'http://localhost:3000', 'null'], // 'null' allows opening HTML file directly
+    'allowed_origins' => [
+        'http://localhost:3000',
+        'http://localhost:5173', // Vite default port
+        'http://127.0.0.1:5173', // Vite alternate
+    ],
     'allowed_origins_patterns' => [],
     'allowed_headers' => ['*'],
     'exposed_headers' => [],
     'max_age' => 0,
-    'supports_credentials' => false,
+    'supports_credentials' => true,
 ];

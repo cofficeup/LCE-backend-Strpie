@@ -1,0 +1,1356 @@
+================================================================================
+STRIPE SUBSCRIPTION INTEGRATION - ALL FILES (UPDATED)
+Generated: 2026-01-02 14:05
+Production Ready with All Fixes Applied
+================================================================================
+
+
+================================================================================
+FILE: app/Services/Subscription/SubscriptionService.php
+================================================================================
+<?php
+
+namespace App\Services\Subscription;
+
+use App\Models\User;
+use App\Models\SubscriptionPlan;
+use App\Models\UserSubscription;
+use App\Models\AuditLog;
+use App\Services\Stripe\StripeSubscriptionService;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+
+class SubscriptionService
+{
+    protected StripeSubscriptionService $stripeSubscription;
+
+    public function __construct(StripeSubscriptionService $stripeSubscription)
+    {
+        $this->stripeSubscription = $stripeSubscription;
+    }
+
+    public function create(User $user, SubscriptionPlan $plan, string $billingCycle): array
+    {
+        if (!in_array($billingCycle, SubscriptionPlan::CYCLES)) {
+            throw new \InvalidArgumentException('Invalid billing cycle: ' . $billingCycle);
+        }
+
+        $price = $plan->getPriceForCycle($billingCycle);
+        if (!$price) {
+            throw new \DomainException("Plan does not support {$billingCycle} billing cycle.");
+        }
+
+        if (!$plan->getStripePriceIdForCycle($billingCycle)) {
+            throw new \DomainException("Plan is not synced to Stripe for {$billingCycle} cycle.");
+        }
+
+        $existingActive = $user->subscriptions()
+            ->whereIn('status', [
+                UserSubscription::STATUS_PENDING,
+                UserSubscription::STATUS_ACTIVE,
+                UserSubscription::STATUS_PAUSED,
+            ])
+            ->exists();
+
+        if ($existingActive) {
+            throw new \DomainException('User already has an active or pending subscription.');
+        }
+
+        return DB::transaction(function () use ($user, $plan, $billingCycle) {
+            $bagsForCycle = $plan->getBagsForCycle($billingCycle);
+
+            $subscription = UserSubscription::create([
+                'user_id' => $user->id,
+                'plan_id' => $plan->id,
+                'status' => UserSubscription::STATUS_PENDING,
+                'billing_cycle' => $billingCycle,
+                'bags_plan_period' => $bagsForCycle,
+                'bags_plan_total' => $bagsForCycle,
+                'bags_plan_balance' => $bagsForCycle,
+                'bags_plan_used' => 0,
+                'bags_available' => $bagsForCycle,
+            ]);
+
+            $stripeData = $this->stripeSubscription->createSubscription($user, $plan, $billingCycle);
+
+            $subscription->update([
+                'stripe_subscription_id' => $stripeData['stripe_subscription_id'],
+                'stripe_customer_id' => $stripeData['stripe_customer_id'],
+                'current_period_start' => \Carbon\Carbon::createFromTimestamp($stripeData['current_period_start']),
+                'current_period_end' => \Carbon\Carbon::createFromTimestamp($stripeData['current_period_end']),
+            ]);
+
+            AuditLog::create([
+                'user_id' => $user->id,
+                'action' => 'subscription_created',
+                'entity_type' => 'subscription',
+                'entity_id' => $subscription->id,
+                'metadata' => [
+                    'plan_id' => $plan->id,
+                    'plan_name' => $plan->name,
+                    'billing_cycle' => $billingCycle,
+                    'stripe_subscription_id' => $stripeData['stripe_subscription_id'],
+                ],
+            ]);
+
+            return [
+                'subscription' => $subscription->fresh()->load('plan'),
+                'client_secret' => $stripeData['client_secret'],
+                'stripe_subscription_id' => $stripeData['stripe_subscription_id'],
+            ];
+        });
+    }
+
+    public function cancel(UserSubscription $subscription, ?string $reason = null): UserSubscription
+    {
+        if (!in_array($subscription->status, [
+            UserSubscription::STATUS_ACTIVE,
+            UserSubscription::STATUS_PAUSED,
+            UserSubscription::STATUS_PENDING,
+        ])) {
+            throw new \DomainException('Subscription cannot be cancelled in its current state.');
+        }
+
+        return DB::transaction(function () use ($subscription, $reason) {
+            if ($subscription->stripe_subscription_id) {
+                $this->stripeSubscription->cancelAtPeriodEnd($subscription, $reason);
+                $subscription->update([
+                    'cancel_at_period_end' => true,
+                    'cancel_reason' => $reason,
+                ]);
+            } else {
+                $subscription->update([
+                    'status' => UserSubscription::STATUS_CANCELLED,
+                    'cancelled_at' => now(),
+                    'cancel_reason' => $reason,
+                ]);
+                if ($subscription->user->subscription_id === $subscription->id) {
+                    $subscription->user->update(['subscription_id' => null]);
+                }
+            }
+
+            AuditLog::create([
+                'user_id' => $subscription->user_id,
+                'action' => 'subscription_cancel_requested',
+                'entity_type' => 'subscription',
+                'entity_id' => $subscription->id,
+                'metadata' => [
+                    'reason' => $reason,
+                    'at_period_end' => $subscription->cancel_at_period_end,
+                ],
+            ]);
+
+            return $subscription->fresh();
+        });
+    }
+
+    public function reactivate(UserSubscription $subscription): UserSubscription
+    {
+        if (!$subscription->cancel_at_period_end) {
+            throw new \DomainException('Subscription is not scheduled for cancellation.');
+        }
+
+        if (!$subscription->isActive()) {
+            throw new \DomainException('Only active subscriptions can be reactivated.');
+        }
+
+        return DB::transaction(function () use ($subscription) {
+            if ($subscription->stripe_subscription_id) {
+                $this->stripeSubscription->reactivate($subscription);
+            }
+
+            $subscription->update([
+                'cancel_at_period_end' => false,
+                'cancel_reason' => null,
+            ]);
+
+            AuditLog::create([
+                'user_id' => $subscription->user_id,
+                'action' => 'subscription_reactivated',
+                'entity_type' => 'subscription',
+                'entity_id' => $subscription->id,
+            ]);
+
+            return $subscription->fresh();
+        });
+    }
+
+    public function upgrade(UserSubscription $subscription, SubscriptionPlan $newPlan, ?string $newBillingCycle = null): UserSubscription
+    {
+        if (!$subscription->isActive()) {
+            throw new \DomainException('Only active subscriptions can be upgraded.');
+        }
+
+        $newCycle = $newBillingCycle ?? $subscription->billing_cycle;
+
+        if (!$newPlan->getStripePriceIdForCycle($newCycle)) {
+            throw new \DomainException("New plan does not support {$newCycle} billing cycle.");
+        }
+
+        $currentPrice = $subscription->plan->getPriceForCycle($subscription->billing_cycle);
+        $newPrice = $newPlan->getPriceForCycle($newCycle);
+
+        if ($newPrice <= $currentPrice) {
+            throw new \DomainException('Use downgrade for reducing plan level.');
+        }
+
+        return DB::transaction(function () use ($subscription, $newPlan, $newCycle) {
+            $oldPlan = $subscription->plan;
+
+            if ($subscription->stripe_subscription_id) {
+                $this->stripeSubscription->updatePlan($subscription, $newPlan, $newCycle, 'create_prorations');
+            }
+
+            $bagsForCycle = $newPlan->getBagsForCycle($newCycle);
+
+            $subscription->update([
+                'plan_id' => $newPlan->id,
+                'billing_cycle' => $newCycle,
+                'bags_plan_total' => $bagsForCycle,
+                'bags_plan_balance' => $bagsForCycle - $subscription->bags_plan_used,
+                'bags_available' => $bagsForCycle - $subscription->bags_plan_used,
+                'status' => UserSubscription::STATUS_ACTIVE,
+            ]);
+
+            AuditLog::create([
+                'user_id' => $subscription->user_id,
+                'action' => 'subscription_upgraded',
+                'entity_type' => 'subscription',
+                'entity_id' => $subscription->id,
+                'metadata' => [
+                    'old_plan_id' => $oldPlan->id,
+                    'new_plan_id' => $newPlan->id,
+                    'billing_cycle' => $newCycle,
+                ],
+            ]);
+
+            return $subscription->fresh()->load('plan');
+        });
+    }
+
+    public function downgrade(UserSubscription $subscription, SubscriptionPlan $newPlan, ?string $newBillingCycle = null): UserSubscription
+    {
+        if (!$subscription->isActive()) {
+            throw new \DomainException('Only active subscriptions can be downgraded.');
+        }
+
+        $newCycle = $newBillingCycle ?? $subscription->billing_cycle;
+
+        if (!$newPlan->getStripePriceIdForCycle($newCycle)) {
+            throw new \DomainException("New plan does not support {$newCycle} billing cycle.");
+        }
+
+        return DB::transaction(function () use ($subscription, $newPlan, $newCycle) {
+            $scheduleId = null;
+
+            // Schedule in Stripe (no immediate change)
+            if ($subscription->stripe_subscription_id) {
+                $scheduleData = $this->stripeSubscription->schedulePlanChange(
+                    $subscription,
+                    $newPlan,
+                    $newCycle
+                );
+                $scheduleId = $scheduleData['schedule_id'] ?? null;
+            }
+
+            // Store pending plan change locally (including schedule ID)
+            $subscription->update([
+                'pending_plan_id' => $newPlan->id,
+                'pending_billing_cycle' => $newCycle,
+                'stripe_schedule_id' => $scheduleId,
+            ]);
+
+            AuditLog::create([
+                'user_id' => $subscription->user_id,
+                'action' => 'subscription_downgrade_scheduled',
+                'entity_type' => 'subscription',
+                'entity_id' => $subscription->id,
+                'metadata' => [
+                    'current_plan_id' => $subscription->plan_id,
+                    'new_plan_id' => $newPlan->id,
+                    'effective_at' => $subscription->current_period_end?->toDateString(),
+                ],
+            ]);
+
+            return $subscription->fresh();
+        });
+    }
+
+    public function recordBagUsage(UserSubscription $subscription, int $bags = 1): UserSubscription
+    {
+        if (!$subscription->isActive()) {
+            throw new \DomainException('Can only record usage on active subscriptions.');
+        }
+
+        $subscription->increment('bags_plan_used', $bags);
+        $subscription->decrement('bags_plan_balance', $bags);
+        $subscription->decrement('bags_available', $bags);
+
+        return $subscription->fresh();
+    }
+
+    public function getAvailableBags(UserSubscription $subscription): int
+    {
+        if (!$subscription->isActive()) {
+            return 0;
+        }
+
+        return max(0, $subscription->bags_plan_total - $subscription->bags_plan_used);
+    }
+}
+
+
+================================================================================
+FILE: app/Services/Subscription/SubscriptionWebhookHandler.php
+================================================================================
+<?php
+
+namespace App\Services\Subscription;
+
+use App\Models\Invoice;
+use App\Models\InvoiceLine;
+use App\Models\UserSubscription;
+use App\Models\SubscriptionPlan;
+use App\Models\AuditLog;
+use App\Services\Invoice\InvoiceService;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+
+class SubscriptionWebhookHandler
+{
+    protected InvoiceService $invoiceService;
+
+    public function __construct(InvoiceService $invoiceService)
+    {
+        $this->invoiceService = $invoiceService;
+    }
+
+    /**
+     * Handle invoice.paid event.
+     */
+    public function handleInvoicePaid(\Stripe\Invoice $stripeInvoice): void
+    {
+        if (!$stripeInvoice->subscription) {
+            return;
+        }
+
+        $subscription = UserSubscription::where('stripe_subscription_id', $stripeInvoice->subscription)->first();
+        if (!$subscription) return;
+
+        DB::transaction(function () use ($subscription, $stripeInvoice) {
+            $existingInvoice = Invoice::where('stripe_invoice_id', $stripeInvoice->id)->first();
+            if ($existingInvoice && $existingInvoice->status === 'paid') return;
+
+            $invoice = $this->createOrUpdateInvoice($subscription, $stripeInvoice, 'paid');
+            $isFirstPayment = $subscription->status === 'pending';
+
+            $subscription->update([
+                'status' => UserSubscription::STATUS_ACTIVE,
+                'current_period_start' => \Carbon\Carbon::createFromTimestamp($stripeInvoice->period_start),
+                'current_period_end' => \Carbon\Carbon::createFromTimestamp($stripeInvoice->period_end),
+                'cancel_at_period_end' => false,
+            ]);
+
+            if (!$isFirstPayment) {
+                $this->resetBagAllocations($subscription);
+            }
+
+            if ($subscription->pending_plan_id) {
+                $this->applyPendingPlanChange($subscription);
+            }
+
+            if ($subscription->user->subscription_id !== $subscription->id) {
+                $subscription->user->update(['subscription_id' => $subscription->id]);
+            }
+
+            AuditLog::create([
+                'user_id' => $subscription->user_id,
+                'action' => $isFirstPayment ? 'subscription_activated' : 'subscription_renewed',
+                'entity_type' => 'subscription',
+                'entity_id' => $subscription->id,
+                'metadata' => [
+                    'stripe_invoice_id' => $stripeInvoice->id,
+                    'amount' => $stripeInvoice->amount_paid / 100,
+                ],
+            ]);
+        });
+    }
+
+    /**
+     * Handle invoice.payment_failed event.
+     */
+    public function handleInvoicePaymentFailed(\Stripe\Invoice $stripeInvoice): void
+    {
+        if (!$stripeInvoice->subscription) return;
+
+        $subscription = UserSubscription::where('stripe_subscription_id', $stripeInvoice->subscription)->first();
+        if (!$subscription) return;
+
+        DB::transaction(function () use ($subscription, $stripeInvoice) {
+            $this->createOrUpdateInvoice($subscription, $stripeInvoice, 'payment_failed');
+            $subscription->update(['status' => UserSubscription::STATUS_PAST_DUE]);
+
+            AuditLog::create([
+                'user_id' => $subscription->user_id,
+                'action' => 'subscription_payment_failed',
+                'entity_type' => 'subscription',
+                'entity_id' => $subscription->id,
+                'metadata' => ['stripe_invoice_id' => $stripeInvoice->id],
+            ]);
+        });
+    }
+
+    /**
+     * Handle invoice.finalized event.
+     * Creates pending invoice record before payment is attempted.
+     */
+    public function handleInvoiceFinalized(\Stripe\Invoice $stripeInvoice): void
+    {
+        if (!$stripeInvoice->subscription) {
+            Log::info('Skipping non-subscription invoice finalized', ['invoice_id' => $stripeInvoice->id]);
+            return;
+        }
+
+        $subscription = UserSubscription::where('stripe_subscription_id', $stripeInvoice->subscription)->first();
+
+        if (!$subscription) {
+            Log::warning('Subscription not found for invoice.finalized', [
+                'stripe_subscription_id' => $stripeInvoice->subscription,
+                'invoice_id' => $stripeInvoice->id,
+            ]);
+            return;
+        }
+
+        // Check if invoice already exists
+        $existingInvoice = Invoice::where('stripe_invoice_id', $stripeInvoice->id)->first();
+        if ($existingInvoice) {
+            Log::info('Invoice already exists for finalized event', ['stripe_invoice_id' => $stripeInvoice->id]);
+            return;
+        }
+
+        // Create pending invoice
+        $this->createOrUpdateInvoice($subscription, $stripeInvoice, 'pending_payment');
+
+        Log::info('Created pending invoice from finalized event', [
+            'stripe_invoice_id' => $stripeInvoice->id,
+            'subscription_id' => $subscription->id,
+        ]);
+    }
+
+    /**
+     * Handle customer.subscription.updated event.
+     */
+    public function handleSubscriptionUpdated(\Stripe\Subscription $stripeSubscription): void
+    {
+        $subscription = UserSubscription::where('stripe_subscription_id', $stripeSubscription->id)->first();
+        if (!$subscription) return;
+
+        DB::transaction(function () use ($subscription, $stripeSubscription) {
+            $updates = [
+                'cancel_at_period_end' => $stripeSubscription->cancel_at_period_end,
+                'current_period_start' => \Carbon\Carbon::createFromTimestamp($stripeSubscription->current_period_start),
+                'current_period_end' => \Carbon\Carbon::createFromTimestamp($stripeSubscription->current_period_end),
+            ];
+
+            $statusMap = [
+                'active' => UserSubscription::STATUS_ACTIVE,
+                'past_due' => UserSubscription::STATUS_PAST_DUE,
+                'canceled' => UserSubscription::STATUS_CANCELLED,
+                'paused' => UserSubscription::STATUS_PAUSED,
+            ];
+
+            if (isset($statusMap[$stripeSubscription->status])) {
+                $updates['status'] = $statusMap[$stripeSubscription->status];
+            }
+
+            $subscription->update($updates);
+        });
+    }
+
+    /**
+     * Handle customer.subscription.deleted event.
+     */
+    public function handleSubscriptionDeleted(\Stripe\Subscription $stripeSubscription): void
+    {
+        $subscription = UserSubscription::where('stripe_subscription_id', $stripeSubscription->id)->first();
+        if (!$subscription) return;
+
+        DB::transaction(function () use ($subscription) {
+            $subscription->update([
+                'status' => UserSubscription::STATUS_CANCELLED,
+                'cancelled_at' => now(),
+            ]);
+
+            if ($subscription->user->subscription_id === $subscription->id) {
+                $subscription->user->update(['subscription_id' => null]);
+            }
+        });
+    }
+
+    /**
+     * Handle charge.refunded event for subscription invoices.
+     * Updates subscription invoice status for partial/full refunds.
+     */
+    public function handleChargeRefunded(\Stripe\Charge $charge): void
+    {
+        $paymentIntentId = $charge->payment_intent;
+        if (!$paymentIntentId) {
+            return;
+        }
+
+        // Find subscription invoice that was paid with this charge
+        $invoice = Invoice::where('type', 'subscription')
+            ->whereHas('payments', function ($query) use ($paymentIntentId) {
+                $query->where('stripe_payment_intent_id', $paymentIntentId);
+            })
+            ->first();
+
+        if (!$invoice) {
+            // Not a subscription invoice, PPO handler will deal with it
+            return;
+        }
+
+        DB::transaction(function () use ($invoice, $charge) {
+            $amountRefunded = $charge->amount_refunded / 100;
+            $totalAmount = $charge->amount / 100;
+            $isFullRefund = $amountRefunded >= $totalAmount;
+
+            // Update invoice status
+            $newStatus = $isFullRefund ? 'refunded' : 'partially_refunded';
+            $invoice->update([
+                'status' => $newStatus,
+                'refunded_amount' => $amountRefunded,
+            ]);
+
+            // Log audit
+            AuditLog::create([
+                'user_id' => $invoice->user_id,
+                'action' => $isFullRefund ? 'subscription_invoice_refunded' : 'subscription_invoice_partial_refund',
+                'entity_type' => 'invoice',
+                'entity_id' => $invoice->id,
+                'metadata' => [
+                    'charge_id' => $charge->id,
+                    'amount_refunded' => $amountRefunded,
+                    'total_amount' => $totalAmount,
+                ],
+            ]);
+
+            Log::info('Processed subscription refund', [
+                'invoice_id' => $invoice->id,
+                'status' => $newStatus,
+                'amount_refunded' => $amountRefunded,
+            ]);
+        });
+    }
+
+    protected function createOrUpdateInvoice(UserSubscription $subscription, \Stripe\Invoice $stripeInvoice, string $status): Invoice
+    {
+        $invoice = Invoice::where('stripe_invoice_id', $stripeInvoice->id)->first();
+
+        if ($invoice) {
+            $invoice->update(['status' => $status, 'paid_at' => $status === 'paid' ? now() : null]);
+            return $invoice;
+        }
+
+        $invoice = Invoice::create([
+            'stripe_invoice_id' => $stripeInvoice->id,
+            'user_id' => $subscription->user_id,
+            'subscription_id' => $subscription->id,
+            'type' => 'subscription',
+            'status' => $status,
+            'currency' => strtoupper($stripeInvoice->currency),
+            'subtotal' => $stripeInvoice->subtotal / 100,
+            'tax' => $stripeInvoice->tax ? $stripeInvoice->tax / 100 : 0,
+            'total' => $stripeInvoice->total / 100,
+            'issued_at' => \Carbon\Carbon::createFromTimestamp($stripeInvoice->created),
+            'paid_at' => $status === 'paid' ? now() : null,
+        ]);
+
+        foreach ($stripeInvoice->lines->data as $line) {
+            InvoiceLine::create([
+                'invoice_id' => $invoice->id,
+                'type' => 'subscription',
+                'description' => $line->description ?? 'Subscription charge',
+                'quantity' => $line->quantity ?? 1,
+                'unit_price' => $line->unit_amount ? $line->unit_amount / 100 : $line->amount / 100,
+                'amount' => $line->amount / 100,
+            ]);
+        }
+
+        return $invoice;
+    }
+
+    protected function resetBagAllocations(UserSubscription $subscription): void
+    {
+        $bagsForCycle = $subscription->plan->getBagsForCycle($subscription->billing_cycle);
+        $subscription->update([
+            'bags_plan_total' => $bagsForCycle,
+            'bags_plan_balance' => $bagsForCycle,
+            'bags_plan_used' => 0,
+            'bags_available' => $bagsForCycle,
+        ]);
+    }
+
+    protected function applyPendingPlanChange(UserSubscription $subscription): void
+    {
+        $newPlan = SubscriptionPlan::find($subscription->pending_plan_id);
+        if (!$newPlan) {
+            $subscription->update(['pending_plan_id' => null, 'pending_billing_cycle' => null]);
+            return;
+        }
+
+        $newCycle = $subscription->pending_billing_cycle ?? $subscription->billing_cycle;
+        $bagsForCycle = $newPlan->getBagsForCycle($newCycle);
+
+        $subscription->update([
+            'plan_id' => $newPlan->id,
+            'billing_cycle' => $newCycle,
+            'bags_plan_total' => $bagsForCycle,
+            'bags_plan_balance' => $bagsForCycle,
+            'bags_plan_used' => 0,
+            'bags_available' => $bagsForCycle,
+            'pending_plan_id' => null,
+            'pending_billing_cycle' => null,
+            'stripe_schedule_id' => null, // Clear schedule after application
+        ]);
+
+        AuditLog::create([
+            'user_id' => $subscription->user_id,
+            'action' => 'subscription_plan_changed',
+            'entity_type' => 'subscription',
+            'entity_id' => $subscription->id,
+            'metadata' => [
+                'new_plan_id' => $newPlan->id,
+                'new_plan_name' => $newPlan->name,
+                'billing_cycle' => $newCycle,
+            ],
+        ]);
+    }
+}
+
+
+================================================================================
+FILE: app/Http/Controllers/Api/V1/StripeWebhookController.php
+================================================================================
+<?php
+
+namespace App\Http\Controllers\Api\V1;
+
+use App\Http\Controllers\Controller;
+use App\Models\StripeWebhookEvent;
+use App\Services\Stripe\StripeService;
+use App\Services\Payment\PaymentService;
+use App\Services\Payment\RefundService;
+use App\Services\Subscription\SubscriptionWebhookHandler;
+use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Log;
+
+class StripeWebhookController extends Controller
+{
+    protected StripeService $stripeService;
+    protected PaymentService $paymentService;
+    protected RefundService $refundService;
+    protected SubscriptionWebhookHandler $subscriptionHandler;
+
+    public function __construct(
+        StripeService $stripeService,
+        PaymentService $paymentService,
+        RefundService $refundService,
+        SubscriptionWebhookHandler $subscriptionHandler
+    ) {
+        $this->stripeService = $stripeService;
+        $this->paymentService = $paymentService;
+        $this->refundService = $refundService;
+        $this->subscriptionHandler = $subscriptionHandler;
+    }
+
+    public function handle(Request $request): JsonResponse
+    {
+        $payload = $request->getContent();
+        $signature = $request->header('Stripe-Signature');
+
+        if (!$signature) {
+            return response()->json(['error' => 'Missing signature'], 400);
+        }
+
+        try {
+            $event = $this->stripeService->constructWebhookEvent($payload, $signature);
+        } catch (\RuntimeException $e) {
+            return response()->json(['error' => 'Invalid signature'], 400);
+        }
+
+        $webhookEvent = StripeWebhookEvent::findOrCreateEvent($event->id, $event->type, $event->toArray());
+
+        if ($webhookEvent->isProcessed()) {
+            return response()->json(['status' => 'already_processed']);
+        }
+
+        try {
+            $this->processEvent($event);
+            $webhookEvent->markProcessed();
+            return response()->json(['status' => 'success']);
+        } catch (\Exception $e) {
+            Log::error('Stripe webhook processing failed: ' . $e->getMessage());
+            return response()->json(['error' => 'Processing failed'], 500);
+        }
+    }
+
+    protected function processEvent(\Stripe\Event $event): void
+    {
+        $object = $event->data->object;
+
+        switch ($event->type) {
+            // ===============================
+            // Payment Intent Events (PPO)
+            // ===============================
+            case 'payment_intent.succeeded':
+                Log::info('Processing payment_intent.succeeded: ' . $object->id);
+                $this->paymentService->markPaymentSucceeded($object->id);
+                break;
+
+            case 'payment_intent.payment_failed':
+                Log::info('Processing payment_intent.payment_failed: ' . $object->id);
+                $failureMessage = $object->last_payment_error->message ?? 'Payment failed';
+                $this->paymentService->markPaymentFailed($object->id, $failureMessage);
+                break;
+
+            case 'charge.refunded':
+                Log::info('Processing charge.refunded: ' . $object->id);
+                $paymentIntentId = $object->payment_intent;
+                $refundId = $object->refunds->data[0]->id ?? null;
+                $amountRefunded = $object->amount_refunded ?? 0;
+
+                if ($paymentIntentId && $refundId) {
+                    // Handle PPO refunds
+                    $this->refundService->handleRefundFromWebhook(
+                        $paymentIntentId,
+                        $refundId,
+                        $amountRefunded
+                    );
+
+                    // Handle subscription refunds (partial refund support)
+                    $this->subscriptionHandler->handleChargeRefunded($object);
+                }
+                break;
+
+            // ===============================
+            // Subscription Invoice Events
+            // ===============================
+            case 'invoice.paid':
+                Log::info('Processing invoice.paid: ' . $object->id);
+                $this->subscriptionHandler->handleInvoicePaid($object);
+                break;
+
+            case 'invoice.payment_failed':
+                Log::info('Processing invoice.payment_failed: ' . $object->id);
+                $this->subscriptionHandler->handleInvoicePaymentFailed($object);
+                break;
+
+            case 'invoice.finalized':
+                Log::info('Processing invoice.finalized: ' . $object->id);
+                $this->subscriptionHandler->handleInvoiceFinalized($object);
+                break;
+
+            // ===============================
+            // Subscription Lifecycle Events
+            // ===============================
+            case 'customer.subscription.updated':
+                Log::info('Processing customer.subscription.updated: ' . $object->id);
+                $this->subscriptionHandler->handleSubscriptionUpdated($object);
+                break;
+
+            case 'customer.subscription.deleted':
+                Log::info('Processing customer.subscription.deleted: ' . $object->id);
+                $this->subscriptionHandler->handleSubscriptionDeleted($object);
+                break;
+
+            case 'customer.subscription.created':
+                Log::info('Subscription created in Stripe: ' . $object->id);
+                break;
+
+            default:
+                Log::info('Unhandled Stripe event type: ' . $event->type);
+        }
+    }
+}
+
+
+================================================================================
+FILE: app/Models/UserSubscription.php
+================================================================================
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class UserSubscription extends Model
+{
+    protected $table = 'lce_user_subscriptions';
+
+    const STATUS_PENDING = 'pending';
+    const STATUS_ACTIVE = 'active';
+    const STATUS_PAUSED = 'paused';
+    const STATUS_PAST_DUE = 'past_due';
+    const STATUS_CANCELLED = 'cancelled';
+    const STATUS_UPGRADED = 'upgraded';
+    const STATUS_DOWNGRADED = 'downgraded';
+
+    protected $fillable = [
+        'user_id', 'plan_id', 'pending_plan_id', 'pending_billing_cycle',
+        // Stripe IDs
+        'stripe_subscription_id', 'stripe_customer_id', 'stripe_schedule_id',
+        // Status
+        'status', 'cancel_at_period_end', 'cancel_reason', 'cancelled_at',
+        // Billing cycle
+        'billing_cycle',
+        // Dates
+        'start_date', 'end_date', 'next_renewal_date', 'current_period_start', 'current_period_end',
+        // Bag tracking
+        'bags_plan_period', 'bags_plan_total', 'bags_plan_balance', 'bags_plan_used', 'bags_available',
+        // Payment tracking
+        'payment_last', 'payment_discount', 'payment_balance',
+        // Proration
+        'manual_proration_applied', 'manual_proration_amount',
+        'notes',
+    ];
+
+    protected $casts = [
+        'start_date' => 'date', 'end_date' => 'date', 'next_renewal_date' => 'date',
+        'current_period_start' => 'datetime', 'current_period_end' => 'datetime',
+        'cancelled_at' => 'datetime', 'cancel_at_period_end' => 'boolean',
+        'manual_proration_applied' => 'boolean',
+        'payment_last' => 'decimal:2', 'payment_discount' => 'decimal:2',
+        'payment_balance' => 'decimal:2', 'manual_proration_amount' => 'decimal:2',
+    ];
+
+    public function user() { return $this->belongsTo(User::class); }
+    public function plan() { return $this->belongsTo(SubscriptionPlan::class, 'plan_id'); }
+    public function pendingPlan() { return $this->belongsTo(SubscriptionPlan::class, 'pending_plan_id'); }
+    public function invoices() { return $this->hasMany(Invoice::class, 'subscription_id'); }
+
+    public function isActive(): bool { return $this->status === self::STATUS_ACTIVE; }
+    public function isCancelled(): bool { return $this->status === self::STATUS_CANCELLED; }
+    public function isPendingCancellation(): bool { return $this->cancel_at_period_end && $this->isActive(); }
+    public function isPastDue(): bool { return $this->status === self::STATUS_PAST_DUE; }
+    public function hasPendingPlanChange(): bool { return !is_null($this->pending_plan_id); }
+    public function isSyncedToStripe(): bool { return !empty($this->stripe_subscription_id); }
+    public function getRemainingBags(): int { return max(0, $this->bags_plan_total - $this->bags_plan_used); }
+
+    public function canUseBag(): bool
+    {
+        if (!$this->isActive()) return false;
+        if ($this->plan && $this->plan->shouldChargePPOOnOverage()) return true;
+        return $this->getRemainingBags() > 0;
+    }
+
+    public function isOverLimit(): bool { return $this->bags_plan_used >= $this->bags_plan_total; }
+}
+
+
+================================================================================
+FILE: database/migrations/2026_01_02_133333_add_stripe_schedule_id_to_user_subscriptions.php
+================================================================================
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Add stripe_schedule_id to track subscription schedules.
+     * This prevents duplicate schedules and orphaned Stripe objects.
+     */
+    public function up(): void
+    {
+        Schema::table('lce_user_subscriptions', function (Blueprint $table) {
+            // Store Stripe subscription schedule ID for downgrades/plan changes
+            $table->string('stripe_schedule_id')->nullable()->after('stripe_customer_id');
+            
+            // Index for quick lookup
+            $table->index('stripe_schedule_id');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::table('lce_user_subscriptions', function (Blueprint $table) {
+            $table->dropIndex(['stripe_schedule_id']);
+            $table->dropColumn('stripe_schedule_id');
+        });
+    }
+};
+
+
+================================================================================
+FILE: app/Models/SubscriptionPlan.php
+================================================================================
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class SubscriptionPlan extends Model
+{
+    protected $table = 'lce_subscription_plans';
+
+    protected $fillable = [
+        'name', 'slug', 'description',
+        'bags_per_day', 'bags_per_week', 'bags_per_month',
+        'price_daily', 'price_weekly', 'price_monthly', 'price_annual',
+        'stripe_product_id', 'stripe_price_id_daily', 'stripe_price_id_weekly',
+        'stripe_price_id_monthly', 'stripe_price_id_annual',
+        'overage_policy', 'overage_price_per_bag', 'is_active',
+    ];
+
+    protected $casts = [
+        'price_daily' => 'decimal:2', 'price_weekly' => 'decimal:2',
+        'price_monthly' => 'decimal:2', 'price_annual' => 'decimal:2',
+        'overage_price_per_bag' => 'decimal:2', 'is_active' => 'boolean',
+    ];
+
+    const CYCLE_DAILY = 'daily';
+    const CYCLE_WEEKLY = 'weekly';
+    const CYCLE_MONTHLY = 'monthly';
+    const CYCLE_ANNUAL = 'annual';
+    const CYCLES = [self::CYCLE_DAILY, self::CYCLE_WEEKLY, self::CYCLE_MONTHLY, self::CYCLE_ANNUAL];
+    const OVERAGE_BLOCK = 'block';
+    const OVERAGE_CHARGE_PPO = 'charge_ppo';
+
+    public function userSubscriptions() { return $this->hasMany(UserSubscription::class, 'plan_id'); }
+
+    public function getPriceForCycle(string $cycle): ?float
+    {
+        return match ($cycle) {
+            self::CYCLE_DAILY => $this->price_daily,
+            self::CYCLE_WEEKLY => $this->price_weekly,
+            self::CYCLE_MONTHLY => $this->price_monthly,
+            self::CYCLE_ANNUAL => $this->price_annual,
+            default => null,
+        };
+    }
+
+    public function getBagsForCycle(string $cycle): ?int
+    {
+        return match ($cycle) {
+            self::CYCLE_DAILY => $this->bags_per_day,
+            self::CYCLE_WEEKLY => $this->bags_per_week,
+            self::CYCLE_MONTHLY => $this->bags_per_month,
+            self::CYCLE_ANNUAL => $this->bags_per_month * 12,
+            default => null,
+        };
+    }
+
+    public function getStripePriceIdForCycle(string $cycle): ?string
+    {
+        return match ($cycle) {
+            self::CYCLE_DAILY => $this->stripe_price_id_daily,
+            self::CYCLE_WEEKLY => $this->stripe_price_id_weekly,
+            self::CYCLE_MONTHLY => $this->stripe_price_id_monthly,
+            self::CYCLE_ANNUAL => $this->stripe_price_id_annual,
+            default => null,
+        };
+    }
+
+    public function isSyncedToStripe(): bool { return !empty($this->stripe_product_id); }
+    public function shouldBlockOnOverage(): bool { return $this->overage_policy === self::OVERAGE_BLOCK; }
+    public function shouldChargePPOOnOverage(): bool { return $this->overage_policy === self::OVERAGE_CHARGE_PPO; }
+}
+
+
+================================================================================
+FILE: app/Services/Stripe/StripeSubscriptionService.php
+================================================================================
+<?php
+
+namespace App\Services\Stripe;
+
+use App\Models\User;
+use App\Models\UserSubscription;
+use App\Models\SubscriptionPlan;
+use Stripe\StripeClient;
+use Stripe\Exception\ApiErrorException;
+use Illuminate\Support\Facades\Log;
+
+class StripeSubscriptionService
+{
+    protected StripeClient $stripe;
+    protected StripeService $stripeService;
+
+    public function __construct(StripeService $stripeService)
+    {
+        $this->stripe = new StripeClient(config('stripe.secret'));
+        $this->stripeService = $stripeService;
+    }
+
+    public function createSubscription(User $user, SubscriptionPlan $plan, string $billingCycle, bool $startImmediately = true): array
+    {
+        $stripePriceId = $plan->getStripePriceIdForCycle($billingCycle);
+        if (!$stripePriceId) {
+            throw new \DomainException("Plan does not have a Stripe price for {$billingCycle} billing cycle.");
+        }
+
+        $stripeCustomerId = $this->stripeService->createOrGetCustomer($user);
+
+        try {
+            $subscriptionParams = [
+                'customer' => $stripeCustomerId,
+                'items' => [['price' => $stripePriceId]],
+                'metadata' => [
+                    'user_id' => $user->id,
+                    'plan_id' => $plan->id,
+                    'billing_cycle' => $billingCycle,
+                ],
+                'payment_behavior' => 'default_incomplete',
+                'payment_settings' => ['save_default_payment_method' => 'on_subscription'],
+                'expand' => ['latest_invoice.payment_intent'],
+            ];
+
+            if ($startImmediately) {
+                $subscriptionParams['proration_behavior'] = 'create_prorations';
+            }
+
+            $stripeSubscription = $this->stripe->subscriptions->create($subscriptionParams);
+
+            return [
+                'stripe_subscription_id' => $stripeSubscription->id,
+                'stripe_customer_id' => $stripeCustomerId,
+                'status' => $stripeSubscription->status,
+                'current_period_start' => $stripeSubscription->current_period_start,
+                'current_period_end' => $stripeSubscription->current_period_end,
+                'client_secret' => $stripeSubscription->latest_invoice?->payment_intent?->client_secret,
+                'latest_invoice_id' => $stripeSubscription->latest_invoice?->id,
+            ];
+        } catch (ApiErrorException $e) {
+            Log::error('Failed to create Stripe subscription', ['user_id' => $user->id, 'error' => $e->getMessage()]);
+            throw new \RuntimeException('Failed to create subscription: ' . $e->getMessage());
+        }
+    }
+
+    public function cancelAtPeriodEnd(UserSubscription $subscription, ?string $reason = null): array
+    {
+        if (!$subscription->stripe_subscription_id) {
+            throw new \DomainException('Subscription is not linked to Stripe.');
+        }
+
+        try {
+            $stripeSubscription = $this->stripe->subscriptions->update(
+                $subscription->stripe_subscription_id,
+                ['cancel_at_period_end' => true]
+            );
+
+            return [
+                'cancel_at_period_end' => $stripeSubscription->cancel_at_period_end,
+                'cancel_at' => $stripeSubscription->cancel_at,
+                'current_period_end' => $stripeSubscription->current_period_end,
+            ];
+        } catch (ApiErrorException $e) {
+            throw new \RuntimeException('Failed to cancel subscription: ' . $e->getMessage());
+        }
+    }
+
+    public function cancelImmediately(UserSubscription $subscription): bool
+    {
+        if (!$subscription->stripe_subscription_id) {
+            throw new \DomainException('Subscription is not linked to Stripe.');
+        }
+
+        try {
+            $this->stripe->subscriptions->cancel($subscription->stripe_subscription_id);
+            return true;
+        } catch (ApiErrorException $e) {
+            throw new \RuntimeException('Failed to cancel subscription: ' . $e->getMessage());
+        }
+    }
+
+    public function reactivate(UserSubscription $subscription): array
+    {
+        if (!$subscription->stripe_subscription_id) {
+            throw new \DomainException('Subscription is not linked to Stripe.');
+        }
+
+        try {
+            $stripeSubscription = $this->stripe->subscriptions->update(
+                $subscription->stripe_subscription_id,
+                ['cancel_at_period_end' => false]
+            );
+
+            return [
+                'cancel_at_period_end' => $stripeSubscription->cancel_at_period_end,
+                'status' => $stripeSubscription->status,
+            ];
+        } catch (ApiErrorException $e) {
+            throw new \RuntimeException('Failed to reactivate subscription: ' . $e->getMessage());
+        }
+    }
+
+    public function updatePlan(UserSubscription $subscription, SubscriptionPlan $newPlan, string $newBillingCycle, string $prorationBehavior = 'create_prorations'): array
+    {
+        if (!$subscription->stripe_subscription_id) {
+            throw new \DomainException('Subscription is not linked to Stripe.');
+        }
+
+        $newPriceId = $newPlan->getStripePriceIdForCycle($newBillingCycle);
+        if (!$newPriceId) {
+            throw new \DomainException("New plan does not have a Stripe price for {$newBillingCycle} billing cycle.");
+        }
+
+        try {
+            $stripeSubscription = $this->stripe->subscriptions->retrieve($subscription->stripe_subscription_id);
+            $itemId = $stripeSubscription->items->data[0]->id;
+
+            $updatedSubscription = $this->stripe->subscriptions->update(
+                $subscription->stripe_subscription_id,
+                [
+                    'items' => [['id' => $itemId, 'price' => $newPriceId]],
+                    'proration_behavior' => $prorationBehavior,
+                    'metadata' => ['plan_id' => $newPlan->id, 'billing_cycle' => $newBillingCycle],
+                ]
+            );
+
+            return [
+                'status' => $updatedSubscription->status,
+                'current_period_start' => $updatedSubscription->current_period_start,
+                'current_period_end' => $updatedSubscription->current_period_end,
+            ];
+        } catch (ApiErrorException $e) {
+            throw new \RuntimeException('Failed to update subscription: ' . $e->getMessage());
+        }
+    }
+
+    public function schedulePlanChange(UserSubscription $subscription, SubscriptionPlan $newPlan, string $newBillingCycle): array
+    {
+        if (!$subscription->stripe_subscription_id) {
+            throw new \DomainException('Subscription is not linked to Stripe.');
+        }
+
+        $newPriceId = $newPlan->getStripePriceIdForCycle($newBillingCycle);
+        if (!$newPriceId) {
+            throw new \DomainException("New plan does not have a Stripe price for {$newBillingCycle} billing cycle.");
+        }
+
+        try {
+            $stripeSubscription = $this->stripe->subscriptions->retrieve($subscription->stripe_subscription_id);
+
+            $schedule = $this->stripe->subscriptionSchedules->create([
+                'from_subscription' => $subscription->stripe_subscription_id,
+            ]);
+
+            $this->stripe->subscriptionSchedules->update($schedule->id, [
+                'phases' => [
+                    [
+                        'items' => [['price' => $stripeSubscription->items->data[0]->price->id]],
+                        'end_date' => $stripeSubscription->current_period_end,
+                    ],
+                    [
+                        'items' => [['price' => $newPriceId]],
+                    ],
+                ],
+            ]);
+
+            return [
+                'schedule_id' => $schedule->id,
+                'effective_date' => $stripeSubscription->current_period_end,
+            ];
+        } catch (ApiErrorException $e) {
+            throw new \RuntimeException('Failed to schedule plan change: ' . $e->getMessage());
+        }
+    }
+
+    public function pauseCollection(UserSubscription $subscription): bool
+    {
+        if (!$subscription->stripe_subscription_id) {
+            throw new \DomainException('Subscription is not linked to Stripe.');
+        }
+
+        try {
+            $this->stripe->subscriptions->update($subscription->stripe_subscription_id, [
+                'pause_collection' => ['behavior' => 'mark_uncollectible'],
+            ]);
+            return true;
+        } catch (ApiErrorException $e) {
+            throw new \RuntimeException('Failed to pause subscription: ' . $e->getMessage());
+        }
+    }
+
+    public function resumeCollection(UserSubscription $subscription): bool
+    {
+        if (!$subscription->stripe_subscription_id) {
+            throw new \DomainException('Subscription is not linked to Stripe.');
+        }
+
+        try {
+            $this->stripe->subscriptions->update($subscription->stripe_subscription_id, [
+                'pause_collection' => '',
+            ]);
+            return true;
+        } catch (ApiErrorException $e) {
+            throw new \RuntimeException('Failed to resume subscription: ' . $e->getMessage());
+        }
+    }
+
+    public function retrieveSubscription(string $stripeSubscriptionId): \Stripe\Subscription
+    {
+        try {
+            return $this->stripe->subscriptions->retrieve($stripeSubscriptionId);
+        } catch (ApiErrorException $e) {
+            throw new \RuntimeException('Failed to retrieve subscription: ' . $e->getMessage());
+        }
+    }
+
+    public function getUpcomingInvoice(UserSubscription $subscription): ?\Stripe\Invoice
+    {
+        if (!$subscription->stripe_subscription_id || !$subscription->stripe_customer_id) {
+            return null;
+        }
+
+        try {
+            return $this->stripe->invoices->upcoming([
+                'customer' => $subscription->stripe_customer_id,
+                'subscription' => $subscription->stripe_subscription_id,
+            ]);
+        } catch (ApiErrorException $e) {
+            return null;
+        }
+    }
+}
+
+
+================================================================================
+FILE: app/Services/Stripe/StripeProductService.php
+================================================================================
+<?php
+
+namespace App\Services\Stripe;
+
+use App\Models\SubscriptionPlan;
+use Stripe\StripeClient;
+use Stripe\Exception\ApiErrorException;
+use Illuminate\Support\Facades\Log;
+
+class StripeProductService
+{
+    protected StripeClient $stripe;
+
+    public function __construct()
+    {
+        $this->stripe = new StripeClient(config('stripe.secret'));
+    }
+
+    public function syncPlanToStripe(SubscriptionPlan $plan): SubscriptionPlan
+    {
+        $productId = $this->syncProduct($plan);
+        $priceIds = $this->syncPrices($plan, $productId);
+
+        $plan->update(array_merge(['stripe_product_id' => $productId], $priceIds));
+        return $plan->fresh();
+    }
+
+    protected function syncProduct(SubscriptionPlan $plan): string
+    {
+        try {
+            if ($plan->stripe_product_id) {
+                $this->stripe->products->update($plan->stripe_product_id, [
+                    'name' => $plan->name,
+                    'description' => $plan->description ?? "Subscription plan: {$plan->name}",
+                    'metadata' => ['plan_id' => $plan->id, 'slug' => $plan->slug],
+                ]);
+                return $plan->stripe_product_id;
+            }
+
+            $product = $this->stripe->products->create([
+                'name' => $plan->name,
+                'description' => $plan->description ?? "Subscription plan: {$plan->name}",
+                'metadata' => ['plan_id' => $plan->id, 'slug' => $plan->slug],
+            ]);
+
+            return $product->id;
+        } catch (ApiErrorException $e) {
+            throw new \RuntimeException('Failed to create Stripe product: ' . $e->getMessage());
+        }
+    }
+
+    protected function syncPrices(SubscriptionPlan $plan, string $productId): array
+    {
+        $priceIds = [];
+
+        $cycleConfigs = [
+            SubscriptionPlan::CYCLE_DAILY => ['field' => 'stripe_price_id_daily', 'price' => $plan->price_daily, 'interval' => 'day'],
+            SubscriptionPlan::CYCLE_WEEKLY => ['field' => 'stripe_price_id_weekly', 'price' => $plan->price_weekly, 'interval' => 'week'],
+            SubscriptionPlan::CYCLE_MONTHLY => ['field' => 'stripe_price_id_monthly', 'price' => $plan->price_monthly, 'interval' => 'month'],
+            SubscriptionPlan::CYCLE_ANNUAL => ['field' => 'stripe_price_id_annual', 'price' => $plan->price_annual, 'interval' => 'year'],
+        ];
+
+        foreach ($cycleConfigs as $cycle => $config) {
+            if (empty($config['price'])) continue;
+
+            $existingPriceId = $plan->{$config['field']};
+
+            if ($existingPriceId) {
+                try {
+                    $existingPrice = $this->stripe->prices->retrieve($existingPriceId);
+                    $newAmount = (int) round($config['price'] * 100);
+                    if ($existingPrice->unit_amount === $newAmount) {
+                        $priceIds[$config['field']] = $existingPriceId;
+                        continue;
+                    }
+                    $this->stripe->prices->update($existingPriceId, ['active' => false]);
+                } catch (ApiErrorException $e) {}
+            }
+
+            try {
+                $price = $this->stripe->prices->create([
+                    'product' => $productId,
+                    'unit_amount' => (int) round($config['price'] * 100),
+                    'currency' => strtolower(config('stripe.currency', 'usd')),
+                    'recurring' => ['interval' => $config['interval'], 'interval_count' => 1],
+                    'metadata' => ['plan_id' => $plan->id, 'billing_cycle' => $cycle],
+                ]);
+
+                $priceIds[$config['field']] = $price->id;
+            } catch (ApiErrorException $e) {
+                throw new \RuntimeException("Failed to create Stripe price for {$cycle}: " . $e->getMessage());
+            }
+        }
+
+        return $priceIds;
+    }
+
+    public function syncAllPlansToStripe(): array
+    {
+        $plans = SubscriptionPlan::where('is_active', true)->get();
+        $results = [];
+
+        foreach ($plans as $plan) {
+            try {
+                $this->syncPlanToStripe($plan);
+                $results[$plan->id] = ['status' => 'success', 'plan' => $plan->name];
+            } catch (\Exception $e) {
+                $results[$plan->id] = ['status' => 'error', 'plan' => $plan->name, 'error' => $e->getMessage()];
+            }
+        }
+
+        return $results;
+    }
+
+    public function archivePlan(SubscriptionPlan $plan): bool
+    {
+        if (!$plan->stripe_product_id) return true;
+
+        try {
+            $this->stripe->products->update($plan->stripe_product_id, ['active' => false]);
+            return true;
+        } catch (ApiErrorException $e) {
+            return false;
+        }
+    }
+}
+
+
+================================================================================
+END OF FILE
+================================================================================

@@ -1,0 +1,53 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+/**
+ * Backup of lce_user_transactions table
+ * Note: This is a backup table, primary transactions should use Transaction model
+ */
+class TransactionBackup extends Model
+{
+    protected $table = 'lce_user_transactions_bk';
+    public $timestamps = false;
+
+    protected $fillable = [
+        'user_id',
+        'type',
+        'invoice_id',
+        'transactionId',
+        'name',
+        'amount',
+        'description',
+        'note',
+        'cdate',
+        'mdate',
+        'cuserid',
+        'muserid',
+    ];
+
+    protected $casts = [
+        'transactionId' => 'integer',
+        'amount' => 'float',
+        'cdate' => 'datetime',
+        'mdate' => 'datetime',
+    ];
+
+    /**
+     * Get the user associated with this transaction
+     */
+    public function user()
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
+
+    /**
+     * Get the invoice associated with this transaction
+     */
+    public function invoice()
+    {
+        return $this->belongsTo(Invoice::class, 'invoice_id');
+    }
+}

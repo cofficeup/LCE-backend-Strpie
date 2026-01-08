@@ -2,38 +2,34 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class UserPromoCode extends Model
 {
-    use HasFactory;
+    protected $table = 'lce_user_promocode';
+
+    public $timestamps = false;
 
     protected $fillable = [
         'user_id',
-        'promo_code_id',
-        'invoice_id',
-        'discount_applied',
-        'used_at'
+        'promocode_id',
+        'promocode',
+        'active',
+        'expiry_date',
     ];
 
     protected $casts = [
-        'used_at' => 'datetime',
-        'discount_applied' => 'decimal:2'
+        'active' => 'boolean',
+        'expiry_date' => 'datetime',
     ];
-
-    public function promoCode()
-    {
-        return $this->belongsTo(PromoCode::class);
-    }
 
     public function user()
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(User::class, 'user_id');
     }
 
-    public function invoice()
+    public function promoCode()
     {
-        return $this->belongsTo(Invoice::class);
+        return $this->belongsTo(PromoCode::class, 'promocode_id');
     }
 }

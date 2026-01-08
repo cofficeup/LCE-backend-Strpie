@@ -1,0 +1,40 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+/**
+ * Backup/Copy of lce_prices table
+ * Note: This is a backup table, primary pricing should use Price/PricingItem models
+ */
+class PricesCopy extends Model
+{
+    protected $table = 'lce_prices_copy1';
+    public $timestamps = false;
+
+    protected $fillable = [
+        'sku',
+        'type',
+        'name',
+        'description',
+        'order',
+        'deleted',
+        'cdate',
+        'mdate',
+    ];
+
+    protected $casts = [
+        'cdate' => 'datetime',
+        'mdate' => 'datetime',
+    ];
+
+    /**
+     * Get a specific price column value
+     */
+    public function getPriceForList(int $priceListId): float
+    {
+        $column = "price_{$priceListId}";
+        return (float) ($this->$column ?? 0);
+    }
+}

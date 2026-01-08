@@ -4,11 +4,11 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
-use App\Models\Role;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
+
 
 class AuthController extends Controller
 {
@@ -24,22 +24,22 @@ class AuthController extends Controller
             'password'   => 'required|string|min:8|confirmed',
             'first_name' => 'required|string|max:255',
             'last_name'  => 'required|string|max:255',
-            'phone'      => 'nullable|string|max:20',
+            'phone_1'    => 'nullable|string|max:20',
+            'zip'        => 'nullable|string|max:10',
         ]);
 
         $user = User::create([
-            'email'      => $validated['email'],
-            'password'   => Hash::make($validated['password']),
-            'first_name' => $validated['first_name'],
-            'last_name'  => $validated['last_name'],
-            'phone'      => $validated['phone'] ?? null,
+            'email'                   => $validated['email'],
+            'user_md'                 => md5($validated['password']), // Legacy MD5 hash
+            'first_name'              => $validated['first_name'],
+            'last_name'               => $validated['last_name'],
+            'phone_1'                 => $validated['phone_1'] ?? null,
+            'zip'                     => $validated['zip'] ?? null,
+            'customer_type'           => 'residential',
+            'country'                 => 'US',
+            'wash_fold_instructions'  => '',
+            'custom_minimum_charge'   => 0,
         ]);
-
-        // Assign default 'customer' role
-        $customerRole = Role::where('name', 'customer')->first();
-        if ($customerRole) {
-            $user->roles()->attach($customerRole->id);
-        }
 
         $token = $user->createToken('auth_token')->plainTextToken;
 
@@ -53,6 +53,7 @@ class AuthController extends Controller
             ],
         ], 201);
     }
+
 
     /**
      * Login and issue token.
@@ -68,7 +69,8 @@ class AuthController extends Controller
 
         $user = User::where('email', $validated['email'])->first();
 
-        if (!$user || !Hash::check($validated['password'], $user->password)) {
+        // Check MD5 hash (legacy format)
+        if (!$user || $user->user_md !== md5($validated['password'])) {
             throw ValidationException::withMessages([
                 'email' => ['The provided credentials are incorrect.'],
             ]);
@@ -124,12 +126,13 @@ class AuthController extends Controller
     private function formatUser(User $user): array
     {
         return [
-            'id'         => $user->id,
-            'email'      => $user->email,
-            'first_name' => $user->first_name,
-            'last_name'  => $user->last_name,
-            'phone'      => $user->phone,
-            'roles'      => $user->roles->pluck('name')->toArray(),
+            'id'            => $user->id,
+            'email'         => $user->email,
+            'first_name'    => $user->first_name,
+            'last_name'     => $user->last_name,
+            'phone'         => $user->phone_1,
+            'zip'           => $user->zip,
+            'customer_type' => $user->customer_type,
         ];
     }
 }

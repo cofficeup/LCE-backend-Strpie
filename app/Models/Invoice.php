@@ -3,91 +3,74 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Invoice extends Model
 {
+    protected $table = 'lce_user_invoice';
+
     protected $fillable = [
-        'stripe_invoice_id',
+        'number',
         'user_id',
-        'pickup_id',
-        'subscription_id',
-        'type',
         'status',
-        'currency',
-        'subtotal',
-        'tax',
+        'wf_site_id',
+        'dc_site_id',
+        'wholesale_total_wf',
+        'wholesale_total_dc',
+        'wholesale_total',
+        'sub_total_wf',
+        'sub_total_dc',
+        'sub_total',
+        'pickup_charge',
         'total',
-        'metadata',
-        'issued_at',
-        'paid_at',
-        'refunded_at',
+        'deleted',
+        'errors',
+        'promo_id',
+        'promocode',
+        'promo_amount',
+        'group_admin_id',
+        'group_admin_discount_amount',
+        'partial_invoice',
     ];
 
     protected $casts = [
-        'metadata' => 'array',
-        'issued_at' => 'datetime',
-        'paid_at' => 'datetime',
-        'refunded_at' => 'datetime',
+        'wholesale_total_wf' => 'float',
+        'wholesale_total_dc' => 'float',
+        'wholesale_total' => 'float',
+        'sub_total_wf' => 'float',
+        'sub_total_dc' => 'float',
+        'sub_total' => 'float',
+        'pickup_charge' => 'float',
+        'total' => 'float',
+        'promo_amount' => 'decimal:2',
+        'group_admin_discount_amount' => 'float',
+        'partial_invoice' => 'boolean',
     ];
 
-    public function lines(): HasMany
+    const CREATED_AT = 'cdate';
+    const UPDATED_AT = 'mdate';
+
+    public function user()
     {
-        return $this->hasMany(InvoiceLine::class);
+        return $this->belongsTo(User::class, 'user_id');
     }
 
-    public function payments(): HasMany
+    public function lines()
     {
-        return $this->hasMany(Payment::class);
+        return $this->hasMany(InvoiceLine::class, 'invoice_id');
     }
 
-    public function user(): BelongsTo
+    public function pickup()
     {
-        return $this->belongsTo(User::class);
+        return $this->hasOne(Pickup::class, 'invoice_id');
     }
 
-    public function pickup(): BelongsTo
+    public function transactions()
     {
-        return $this->belongsTo(Pickup::class);
+        return $this->hasMany(Transaction::class, 'invoice_id');
     }
 
-    public function subscription(): BelongsTo
+    public function scopeNotDeleted($query)
     {
-        return $this->belongsTo(UserSubscription::class, 'subscription_id');
-    }
-
-    /**
-     * Check if invoice has an active payment (pending or succeeded).
-     */
-    public function hasActivePayment(): bool
-    {
-        return $this->payments()
-            ->whereIn('status', [Payment::STATUS_PENDING, Payment::STATUS_SUCCEEDED])
-            ->exists();
-    }
-
-    /**
-     * Check if invoice is already paid.
-     */
-    public function isPaid(): bool
-    {
-        return $this->status === 'paid';
-    }
-
-    /**
-     * Check if invoice is refunded.
-     */
-    public function isRefunded(): bool
-    {
-        return $this->status === 'refunded';
-    }
-
-    /**
-     * Check if invoice is partially refunded.
-     */
-    public function isPartiallyRefunded(): bool
-    {
-        return $this->status === 'partially_refunded';
+        return $query->where('deleted', 'No');
     }
 }

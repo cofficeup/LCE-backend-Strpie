@@ -2,8 +2,8 @@
 
 namespace Database\Seeders;
 
-use App\Models\SubscriptionPlan;
 use Illuminate\Database\Seeder;
+use App\Models\SubscriptionPlan;
 
 class SubscriptionPlanSeeder extends Seeder
 {
@@ -11,45 +11,41 @@ class SubscriptionPlanSeeder extends Seeder
     {
         $plans = [
             [
-                'name' => 'Basic',
-                'slug' => 'basic',
-                'description' => 'Perfect for individuals with light laundry needs.',
+                'code' => 'SUB_M_1BAG',
+                'name' => 'Subscribe & Save Monthly - 1 Bag',
+                'bags_per_month' => 1,
+                'price_per_bag' => 70.00,
+                'billing_cycle' => 'monthly',
+                'annual_discount' => 0.00,
+                'active' => true,
+            ],
+            [
+                'code' => 'SUB_M_2BAG',
+                'name' => 'Subscribe & Save Monthly - 2 Bags',
                 'bags_per_month' => 2,
-                'price_monthly' => 29.99,
-                'price_annual' => 299.99,
-                'is_active' => true,
+                'price_per_bag' => 67.00,
+                'billing_cycle' => 'monthly',
+                'annual_discount' => 0.00,
+                'active' => true,
             ],
             [
-                'name' => 'Standard',
-                'slug' => 'standard',
-                'description' => 'Great for couples or small families.',
+                'code' => 'SUB_M_4BAG',
+                'name' => 'Subscribe & Save Monthly - 4 Bags',
                 'bags_per_month' => 4,
-                'price_monthly' => 49.99,
-                'price_annual' => 499.99,
-                'is_active' => true,
-            ],
-            [
-                'name' => 'Premium',
-                'slug' => 'premium',
-                'description' => 'Ideal for larger families with heavy laundry needs.',
-                'bags_per_month' => 8,
-                'price_monthly' => 89.99,
-                'price_annual' => 899.99,
-                'is_active' => true,
-            ],
-            [
-                'name' => 'Business',
-                'slug' => 'business',
-                'description' => 'For small businesses and commercial use.',
-                'bags_per_month' => 16,
-                'price_monthly' => 159.99,
-                'price_annual' => 1599.99,
-                'is_active' => true,
+                'price_per_bag' => 65.00,
+                'billing_cycle' => 'monthly',
+                'annual_discount' => 0.00,
+                'active' => true,
             ],
         ];
 
         foreach ($plans as $plan) {
-            SubscriptionPlan::create($plan);
+            SubscriptionPlan::updateOrCreate(
+                ['code' => $plan['code']],
+                $plan
+            );
         }
+
+        $this->command->info('Seeded ' . count($plans) . ' subscription plans');
     }
 }

@@ -2,86 +2,124 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Pickup extends Model
 {
-    use HasFactory;
-
-    protected $table = 'pickups';
+    protected $table = 'lce_user_pickup';
 
     protected $fillable = [
         'user_id',
-        'subscription_id',
-        'invoice_id',
-        'order_type',
-        'status',
+        'pickup_type',
         'pickup_date',
-        'estimated_weight',
-        'actual_weight',
-        'bags_used',
-        'pickup_address',
-        'delivery_address',
-        'notes',
-        'picked_up_at',
-        'delivered_at',
+        'status',
+        'pickup_time',
+        'no_laundry_time',
+        'unload_wf_time',
+        'unload_dc_time',
+        'start_wf_time',
+        'start_dc_time',
+        'processing_wf_time',
+        'processing_dc_time',
+        'invoice_time',
+        'hold_time',
+        'unhold_time',
+        'load_wf_time',
+        'load_dc_time',
+        'delivery_time',
+        'cancelled_time',
+        'hold_status',
+        'wf_items',
+        'wf_bags_items',
+        'wf_hanger_items',
+        'wf_site_id',
+        'wf_washer_cost',
+        'wf_dryer_cost',
+        'wf_weight',
+        'wf_slip_number',
+        'dc_items',
+        'dc_bags_items',
+        'dc_hanger_items',
+        'dc_site_id',
+        'dc_slip_number',
+        'invoice_id',
+        'customerPaymentTransId',
+        'customerPaymentTransAmount',
+        'plist_printed',
+        'keep_record',
+        'geo_location',
+        'pickup_driver_id',
+        'skipped_pickup',
+        'deliver_driver_id',
+        'on_vacation',
+        'group_admin_id',
+        'group_code',
+        'partial_invoice',
+        'group_invoice_id',
+        'log',
+        'cuser_id',
     ];
 
     protected $casts = [
-        'pickup_date' => 'date',
-        'estimated_weight' => 'decimal:2',
-        'actual_weight' => 'decimal:2',
-        'picked_up_at' => 'datetime',
-        'delivered_at' => 'datetime',
+        'pickup_time' => 'datetime',
+        'no_laundry_time' => 'datetime',
+        'unload_wf_time' => 'datetime',
+        'unload_dc_time' => 'datetime',
+        'start_wf_time' => 'datetime',
+        'start_dc_time' => 'datetime',
+        'processing_wf_time' => 'datetime',
+        'processing_dc_time' => 'datetime',
+        'invoice_time' => 'datetime',
+        'hold_time' => 'datetime',
+        'unhold_time' => 'datetime',
+        'load_wf_time' => 'datetime',
+        'load_dc_time' => 'datetime',
+        'delivery_time' => 'datetime',
+        'cancelled_time' => 'datetime',
+        'wf_items' => 'integer',
+        'wf_bags_items' => 'integer',
+        'wf_hanger_items' => 'integer',
+        'wf_weight' => 'integer',
+        'dc_items' => 'integer',
+        'dc_bags_items' => 'integer',
+        'dc_hanger_items' => 'integer',
+        'plist_printed' => 'boolean',
+        'keep_record' => 'integer',
+        'skipped_pickup' => 'boolean',
+        'on_vacation' => 'boolean',
+        'partial_invoice' => 'integer',
     ];
 
-    const ORDER_TYPES = ['ppo', 'subscription'];
+    const CREATED_AT = 'cdate';
+    const UPDATED_AT = null; // No updated_at in legacy
 
-    const STATUSES = [
-        'pending_payment',
-        'scheduled',
-        'picked_up',
-        'processing',
-        'ready_for_delivery',
-        'delivered',
-        'cancelled'
-    ];
-
-    /**
-     * Relationships
-     */
-    public function user(): BelongsTo
+    public function user()
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(User::class, 'user_id');
     }
 
-    public function subscription(): BelongsTo
+    public function invoice()
     {
-        return $this->belongsTo(UserSubscription::class, 'subscription_id');
+        return $this->belongsTo(Invoice::class, 'invoice_id');
     }
 
-    public function invoice(): BelongsTo
+    public function wfSite()
     {
-        return $this->belongsTo(Invoice::class);
+        return $this->belongsTo(ProcessingSite::class, 'wf_site_id');
     }
 
-    /**
-     * Scopes
-     */
-    public function scopeScheduled($query)
+    public function dcSite()
     {
-        return $query->where('status', 'scheduled');
+        return $this->belongsTo(ProcessingSite::class, 'dc_site_id');
     }
 
-    public function scopePendingPayment($query)
+    public function pickupDriver()
     {
-        return $query->where('status', 'pending_payment');
+        return $this->belongsTo(User::class, 'pickup_driver_id');
     }
 
-    public function scopeForUser($query, int $userId)
+    public function deliverDriver()
     {
-        return $query->where('user_id', $userId);
+        return $this->belongsTo(User::class, 'deliver_driver_id');
     }
 }
