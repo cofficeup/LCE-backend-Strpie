@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Payment extends Model
 {
+    protected $connection = 'client';
     protected $table = 'lce_payment';
     public $timestamps = false;
 

@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class InvoiceLine extends Model
 {
+    protected $connection = 'client';
     protected $table = 'lce_user_invoice_line';
 
     protected $fillable = [

@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class TmpNoLaundryTransaction extends Model
 {
+    protected $connection = 'client';
     protected $table = 'lce_tmp_nolaundry_transactions';
     protected $primaryKey = 'intid';
     public $timestamps = false;

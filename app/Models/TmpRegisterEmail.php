@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class TmpRegisterEmail extends Model
 {
+    protected $connection = 'client';
     protected $table = 'lce_tmp_register_emails';
     public $timestamps = false;
 

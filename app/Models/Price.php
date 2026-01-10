@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class Price extends Model
 {
+    protected $connection = 'client';
     protected $table = 'lce_prices';
 
     protected $fillable = [

@@ -43,15 +43,75 @@ return [
             'transaction_mode' => 'DEFERRED',
         ],
 
+        /*
+        |--------------------------------------------------------------------------
+        | Laravel Framework Database
+        |--------------------------------------------------------------------------
+        | Used for: auth tokens, personal_access_tokens, jobs, logs
+        | This is the Laravel-managed database for framework concerns only.
+        */
+        'laravel' => [
+            'driver' => 'mysql',
+            'url' => env('LARAVEL_DB_URL'),
+            'host' => env('LARAVEL_DB_HOST', '127.0.0.1'),
+            'port' => env('LARAVEL_DB_PORT', '3306'),
+            'database' => env('LARAVEL_DB_DATABASE', 'lce_backend'),
+            'username' => env('LARAVEL_DB_USERNAME', 'root'),
+            'password' => env('LARAVEL_DB_PASSWORD', ''),
+            'unix_socket' => env('LARAVEL_DB_SOCKET', ''),
+            'charset' => env('DB_CHARSET', 'utf8mb4'),
+            'collation' => env('DB_COLLATION', 'utf8mb4_unicode_ci'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'strict' => true,
+            'engine' => null,
+            'options' => extension_loaded('pdo_mysql') ? array_filter([
+                (PHP_VERSION_ID >= 80500 ? \Pdo\Mysql::ATTR_SSL_CA : \PDO::MYSQL_ATTR_SSL_CA) => env('MYSQL_ATTR_SSL_CA'),
+            ]) : [],
+        ],
+
+        /*
+        |--------------------------------------------------------------------------
+        | Client Business Database (SOURCE OF TRUTH)
+        |--------------------------------------------------------------------------
+        | Used for: ALL business data (users, subscriptions, pickups, invoices, etc.)
+        | This is the legacy client database - DO NOT MODIFY SCHEMA.
+        */
+        'client' => [
+            'driver' => 'mysql',
+            'url' => env('CLIENT_DB_URL'),
+            'host' => env('CLIENT_DB_HOST', '127.0.0.1'),
+            'port' => env('CLIENT_DB_PORT', '3306'),
+            'database' => env('CLIENT_DB_DATABASE', 'lce_site_v2'),
+            'username' => env('CLIENT_DB_USERNAME', 'root'),
+            'password' => env('CLIENT_DB_PASSWORD', ''),
+            'unix_socket' => env('CLIENT_DB_SOCKET', ''),
+            'charset' => env('DB_CHARSET', 'utf8mb4'),
+            'collation' => env('DB_COLLATION', 'utf8mb4_unicode_ci'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'strict' => true,
+            'engine' => null,
+            'options' => extension_loaded('pdo_mysql') ? array_filter([
+                (PHP_VERSION_ID >= 80500 ? \Pdo\Mysql::ATTR_SSL_CA : \PDO::MYSQL_ATTR_SSL_CA) => env('MYSQL_ATTR_SSL_CA'),
+            ]) : [],
+        ],
+
+        /*
+        |--------------------------------------------------------------------------
+        | Legacy MySQL Connection (Backward Compatibility)
+        |--------------------------------------------------------------------------
+        | Maps to client database for backward compatibility with existing code.
+        */
         'mysql' => [
             'driver' => 'mysql',
-            'url' => env('DB_URL'),
-            'host' => env('DB_HOST', '127.0.0.1'),
-            'port' => env('DB_PORT', '3306'),
-            'database' => env('DB_DATABASE', 'laravel'),
-            'username' => env('DB_USERNAME', 'root'),
-            'password' => env('DB_PASSWORD', ''),
-            'unix_socket' => env('DB_SOCKET', ''),
+            'url' => env('CLIENT_DB_URL', env('DB_URL')),
+            'host' => env('CLIENT_DB_HOST', env('DB_HOST', '127.0.0.1')),
+            'port' => env('CLIENT_DB_PORT', env('DB_PORT', '3306')),
+            'database' => env('CLIENT_DB_DATABASE', env('DB_DATABASE', 'lce_site_v2')),
+            'username' => env('CLIENT_DB_USERNAME', env('DB_USERNAME', 'root')),
+            'password' => env('CLIENT_DB_PASSWORD', env('DB_PASSWORD', '')),
+            'unix_socket' => env('CLIENT_DB_SOCKET', env('DB_SOCKET', '')),
             'charset' => env('DB_CHARSET', 'utf8mb4'),
             'collation' => env('DB_COLLATION', 'utf8mb4_unicode_ci'),
             'prefix' => '',
@@ -148,7 +208,7 @@ return [
 
         'options' => [
             'cluster' => env('REDIS_CLUSTER', 'redis'),
-            'prefix' => env('REDIS_PREFIX', Str::slug((string) env('APP_NAME', 'laravel')).'-database-'),
+            'prefix' => env('REDIS_PREFIX', Str::slug((string) env('APP_NAME', 'laravel')) . '-database-'),
             'persistent' => env('REDIS_PERSISTENT', false),
         ],
 

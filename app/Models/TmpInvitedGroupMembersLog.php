@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class TmpInvitedGroupMembersLog extends Model
 {
+    protected $connection = 'client';
     protected $table = 'lce_tmp_invited_group_members_log';
     public $timestamps = false;
 

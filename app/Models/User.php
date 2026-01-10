@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class User extends Authenticatable
 {
+    protected $connection = 'client';
     use HasApiTokens, HasFactory, Notifiable;
 
     /**

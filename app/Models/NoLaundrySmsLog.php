@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class NoLaundrySmsLog extends Model
 {
+    protected $connection = 'client';
     protected $table = 'lce_nolaundry_sms_log';
     protected $primaryKey = 'id';
     public $timestamps = false;

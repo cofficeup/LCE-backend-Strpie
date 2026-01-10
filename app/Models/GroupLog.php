@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class GroupLog extends Model
 {
+    protected $connection = 'client';
     protected $table = 'lce_user_group_log';
     protected $primaryKey = 'intid';
     public $timestamps = false;

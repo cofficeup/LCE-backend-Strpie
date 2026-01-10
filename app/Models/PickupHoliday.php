@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class PickupHoliday extends Model
 {
+    protected $connection = 'client';
     protected $table = 'lce_pickup_nonworking_days';
 
     public $timestamps = false;

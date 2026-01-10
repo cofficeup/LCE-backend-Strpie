@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class WaitingList extends Model
 {
+    protected $connection = 'client';
     protected $table = 'lce_waiting_list';
 
     public $timestamps = false;

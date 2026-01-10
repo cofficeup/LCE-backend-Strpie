@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class Pickup extends Model
 {
+    protected $connection = 'client';
     protected $table = 'lce_user_pickup';
 
     protected $fillable = [

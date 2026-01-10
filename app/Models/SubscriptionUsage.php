@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class SubscriptionUsage extends Model
 {
+    protected $connection = 'client';
     protected $table = 'lce_user_subscription_usage';
 
     protected $fillable = [

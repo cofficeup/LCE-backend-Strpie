@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class ProcessingSite extends Model
 {
+    protected $connection = 'client';
     protected $table = 'lce_processing_sites';
 
     public $timestamps = false;

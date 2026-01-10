@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class VacationLog extends Model
 {
+    protected $connection = 'client';
     protected $table = 'lce_users_vacation_logs';
 
     public $timestamps = false;

@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class PickupZone extends Model
 {
+    protected $connection = 'client';
     protected $table = 'lce_pickup_zones';
 
     public $timestamps = false;

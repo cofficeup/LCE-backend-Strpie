@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class UserPromoCode extends Model
 {
+    protected $connection = 'client';
     protected $table = 'lce_user_promocode';
 
     public $timestamps = false;

@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class GroupAdmin extends Model
 {
+    protected $connection = 'client';
     protected $table = 'lce_user_group_admin';
 
     protected $primaryKey = 'group_id';

@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class GroupMemberHistory extends Model
 {
+    protected $connection = 'client';
     protected $table = 'lce_user_group_members_history';
     protected $primaryKey = 'intid';
     public $timestamps = false;

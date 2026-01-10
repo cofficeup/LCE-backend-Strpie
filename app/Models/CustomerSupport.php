@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class CustomerSupport extends Model
 {
+    protected $connection = 'client';
     protected $table = 'lce_user_cs';
 
     protected $fillable = [

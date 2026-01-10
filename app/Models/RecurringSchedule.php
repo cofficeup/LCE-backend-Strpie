@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class RecurringSchedule extends Model
 {
+    protected $connection = 'client';
     protected $table = 'lce_user_rs';
 
     public $timestamps = false;
